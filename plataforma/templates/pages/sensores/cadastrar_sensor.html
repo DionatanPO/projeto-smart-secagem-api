@@ -1,0 +1,97 @@
+{% extends 'layouts/base.html' %}
+{% load static %}
+{% block title %} Cadastrar sensor{% endblock title %}
+{% block extrastyle %}
+<!-- DataTables -->
+<link rel="stylesheet" href="{% static 'plugins/datatables-bs4/css/dataTables.bootstrap4.min.css' %}">
+<link rel="stylesheet" href="{% static 'plugins/datatables-responsive/css/responsive.bootstrap4.min.css' %}">
+<link rel="stylesheet" href="{% static 'plugins/datatables-buttons/css/buttons.bootstrap4.min.css' %}">
+{% endblock extrastyle %}
+{% block bodyclass %} hold-transition sidebar-mini {% endblock bodyclass %}
+{% block content %}
+<!-- Content Wrapper. Contains page content -->
+<div class="content-wrapper">
+    <!-- Content Header (Page header) -->
+    <section class="content-header">
+        <div class="container-fluid">
+            <div class="row mb-2">
+                <div class="col-sm-6">
+                    <h1>Cadastrar sensor</h1>
+                </div>
+            </div>
+            <div class="card o-hidden border-0 shadow-lg my-5">
+                <div class="card-body p-0">
+                    <!-- Nested Row within Card Body -->
+                    <div class="row">
+                        <div class="col-lg">
+                            <div class="p-5">
+                                <form action="{% url 'form_cadastrar_sensor' silo.id_silo %}" method="POST">
+                                    {% csrf_token %}
+
+                                    <div class="row">
+                                        <div class="form-group col-sm-4">
+                                            <label for="nome">Nome de identificação</label>
+                                            <input type="text" class="form-control" id="nome"
+                                                   name="nome"
+                                                   placeholder="Digite aqui" required>
+                                        </div>
+
+                                        <div class="form-group col-sm-4">
+                                            <label for="tipo">Tipo de Sensor</label>
+                                            <select id="tipo" name="tipo" class="form-control" required>
+                                                <option value="" disabled selected>Selecione o Tipo</option>
+                                                <option value="Pressão">Pressão</option>
+                                                <option value="Umidade">Umidade</option>
+                                                <option value="Temperatura">Temperatura</option>
+                                            </select>
+                                        </div>
+
+                                    </div>
+
+                                    <hr>
+                                    <div class="row">
+                                        <div class="form-group col-sm-2 ">
+                                            <label>Status do sensor</label>
+                                            <select id="status" name="status" class="form-control" required>
+                                                <option value="" disabled selected>Selecione um status</option>
+                                                <option value="Ligado">Ligado</option>
+                                                <option value="Desligado">Desligado</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="text">
+                                        <label>Observações</label>
+                                    </div>
+                                    <div class="form-group">
+                                                                                    <textarea
+                                                                                            class="form-control form-control-user"
+                                                                                            id="observacao"
+                                                                                            name="observacao"
+                                                                                            rows="3"></textarea>
+                                    </div>
+                                    <button type="submit" class="btn btn-success float-right">
+                                        Cadastrar
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+{% endblock content %}
+{% block extra_scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.inputmask/5.0.6/jquery.inputmask.min.js"></script>
+<!--<script>-->
+<!--    $(document).ready(function() {-->
+<!--        Inputmask().mask(document.querySelectorAll("[data-inputmask]"));-->
+<!--        $('#cpf').inputmask('999.999.999-99'); // Aplica a máscara de CPF ao campo com o ID 'cpf'-->
+<!--        $('#telefone').inputmask('(99) 9999-9999'); // Máscara para telefone-->
+<!--        $('#celular').inputmask('(99) 99999-9999'); // Máscara para celular-->
+<!--    });-->
+<!--</script>-->
+{% endblock extra_scripts %}

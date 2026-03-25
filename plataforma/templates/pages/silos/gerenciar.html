@@ -1,0 +1,262 @@
+{% extends 'layouts/base.html' %}
+{% load static %}
+{% block title %} Gerenciar silos{% endblock title %}
+{% block extrastyle %}
+<link rel="stylesheet" href="https://code.ionicframework.com/ionicons/2.0.1/css/ionicons.min.css">
+<script src="https://cdn.jsdelivr.net/gh/gitbrent/bootstrap4-toggle@3.6.1/js/bootstrap4-toggle.min.js"></script>
+{% endblock extrastyle %}
+{% block bodyclass %} hold-transition sidebar-mini {% endblock bodyclass %}
+{% block content %}
+<!-- Content Wrapper. Contains page content -->
+<div class="content-wrapper">
+    <!-- Content Header (Page header) -->
+    <section class="content-header">
+        <div class="container-fluid">
+        <div class="callout callout-info">
+            ℹ️Para assegurar uma visão dinâmica e precisa dos dados, nossa plataforma realizará atualizações a cada
+            intervalo de 3 segundos. Essa abordagem contínua e ágil garante acesso às informações mais recentes e
+            relevantes.
+        </div>
+
+            <div class="row align-items-center">
+
+                <div class="col col-lg-3">
+                    <h4>Gerenciar {{silo.identificacao}}</h4>
+                </div>
+
+                <div class="col col-lg-9 text-right">
+                    <h5 class="m-0" id="data">Atualizados em: {{parametros.time}}</h5>
+                    <!--                    <button type="button" class=" btnDeletar btn btn-primary">Atualizar dados</button>-->
+                </div>
+
+            </div>
+            <br>
+            <h5 class="m-0">Informações referente a umidade</h5>
+            <br>
+            <div class="row mb-2">
+                <div class="col-sm-2">
+                    <!--                    <p>Interna</p>-->
+                    <div class="small-box bg-lightblue">
+                        <div class="inner">
+                            <h3 id="u_interna"> {{parametros.umidade_interna}}<sup style="font-size: 20px">%</sup></h3>
+                            <!--                            <p>Bounce Rate</p>-->
+                        </div>
+                        <div class="icon">
+                            <i class="ion ion-waterdrop"></i>
+                        </div>
+                        <a href="#" class="small-box-footer">
+                            Interna
+                            <!--                            <i class="fas fa-arrow-circle-right"></i>-->
+                        </a>
+                    </div>
+                </div>
+                <div class="col-sm-2">
+                    <!--                    <p>Externa</p>-->
+                    <div class="small-box bg-lightblue">
+                        <div class="inner">
+                            <h3 id="u_externa"> {{parametros.umidade_externa}}<sup style="font-size: 20px">%</sup></h3>
+                            <!--                            <p>Bounce Rate</p>-->
+                        </div>
+                        <div class="icon">
+                            <i class="ion ion-waterdrop"></i>
+                        </div>
+                        <a href="#" class="small-box-footer">Externa
+                            <!--                            <i class="fas fa-arrow-circle-right"></i>-->
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <br>
+            <h5 class="m-0">Informações referente a pressão</h5>
+            <br>
+            <div class="row mb-2">
+                <div class="col-sm-2">
+                    <!--                    <p>Interna</p>-->
+                    <div class="small-box bg-info">
+                        <div class="inner">
+                            <h3 id="pressao"> {{parametros.pressao}}<sup style="font-size: 20px">PSI</sup></h3>
+                            <!--                            <p>Bounce Rate</p>-->
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-compress-alt"></i>
+                        </div>
+                        <a href="#" class="small-box-footer">Pressão
+                            <!--                            <i class="fas fa-arrow-circle-right"></i>-->
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <h5 class="m-0">Informações referente as temperaturas por sensores</h5>
+            <br>
+            <div class="row mb-2">
+                <div class="col-sm-2">
+                    <!--                    <p>Interna</p>-->
+                    <div class="small-box bg-secondary">
+                        <div class="inner">
+                            <h3 id="temp1"> {{parametros.temp1}}<sup style="font-size: 20px">%</sup></h3>
+                            <!--                            <p>Bounce Rate</p>-->
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-temperature-low"></i>
+                        </div>
+                        <a href="#" class="small-box-footer">
+                            Sensor 1
+                            <!--                            <i class="fas fa-arrow-circle-right"></i>-->
+                        </a>
+                    </div>
+                </div>
+                <div class="col-sm-2">
+                    <!--                    <p>Externa</p>-->
+                    <div class="small-box bg-secondary">
+                        <div class="inner">
+                            <h3 id="temp2"> {{parametros.temp2}}<sup style="font-size: 20px">%</sup></h3>
+                            <!--                            <p>Bounce Rate</p>-->
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-temperature-low"></i>
+                        </div>
+                        <a href="#" class="small-box-footer">Sensor 2
+                            <!--                            <i class="fas fa-arrow-circle-right"></i>-->
+                        </a>
+                    </div>
+                </div>
+                <div class="col-sm-2">
+                    <!--                    <p>Externa</p>-->
+                    <div class="small-box bg-secondary">
+                        <div class="inner">
+                            <h3 id="temp3"> {{parametros.temp3}}<sup style="font-size: 20px">%</sup></h3>
+                            <!--                            <p>Bounce Rate</p>-->
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-temperature-low"></i>
+                        </div>
+                        <a href="#" class="small-box-footer">Sensor 3
+                            <!--                            <i class="fas fa-arrow-circle-right"></i>-->
+                        </a>
+                    </div>
+                </div>
+                <div class="col-sm-2">
+                    <!--                    <p>Externa</p>-->
+                    <div class="small-box bg-secondary">
+                        <div class="inner">
+                            <h3 id="temp4"> {{parametros.temp4}}<sup style="font-size: 20px">%</sup></h3>
+                            <!--                            <p>Bounce Rate</p>-->
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-temperature-low"></i>
+                        </div>
+                        <a href="#" class="small-box-footer">Sensor 4
+                            <!--                            <i class="fas fa-arrow-circle-right"></i>-->
+                        </a>
+                    </div>
+                </div>
+                <div class="col-sm-2">
+                    <!--                    <p>Externa</p>-->
+                    <div class="small-box bg-secondary">
+                        <div class="inner">
+                            <h3 id="temp5"> {{parametros.temp5}}<sup style="font-size: 20px">%</sup></h3>
+                            <!--                            <p>Bounce Rate</p>-->
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-temperature-low"></i>
+                        </div>
+                        <a href="#" class="small-box-footer">Sensor 5
+                            <!--                            <i class="fas fa-arrow-circle-right"></i>-->
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <h5 class="m-0">Sistema de aeração</h5>
+            <br>
+            <div class="row mb-2">
+                <div class="col-sm-2">
+                    <!--                    <p>Interna</p>-->
+                    <div class="small-box bg-secondary">
+                        <div class="inner">
+                            <h4 id="aeracao"><sup style="font-size: 20px"></sup>{{silo.controlador}}</h4>
+                            <!--                            <p>Bounce Rate</p>-->
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-fan"></i>
+                        </div>
+                        {% if silo.controlador == 'Ligado' %}
+                        <button id="btn_controlador" type="button" class="btn btn-block btn-danger">Desligar</button>
+                        {% else %}
+                        <button id="btn_controlador" type="button" class="btn btn-block btn-primary">Ligar</button>
+                        {% endif %}
+
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </section>
+</div>
+
+{% endblock content %}
+{% block extra_scripts %}
+<script>
+    $(document).ready(function () {
+
+        function atualizar() {
+            $.ajax({
+                method: "GET",
+                dataType: "JSON",
+                contentType: "application/json",
+                url: "https://smart.secagemdigital.com/api/silos/{{silo.id_silo}}",
+                success: function (data) {
+                    document.getElementById("aeracao").innerHTML = data.controlador;
+
+                    if (data.controlador == "Ligado") {
+                        document.getElementById("btn_controlador").innerHTML = "Desligar";
+                        document.getElementById('btn_controlador').className = "btn btn-block btn-danger";
+                    } else {
+                        document.getElementById("btn_controlador").innerHTML = "Ligar";
+                        document.getElementById('btn_controlador').className = "btn btn-block btn-primary";
+                    }
+                }
+            });
+
+            $.ajax({
+                method: "GET",
+                dataType: "JSON",
+                contentType: "application/json",
+                url: "https://smart.secagemdigital.com/api/parametro/",
+                success: function (data) {
+    
+                    $.ajax({
+                        method: "GET",
+                        dataType: "JSON",
+                        contentType: "application/json",
+                        url: "https://smart.secagemdigital.com/api/parametros/" + data[0].id_parametro,
+                        success: function (data) {
+                            document.getElementById("u_interna").innerHTML = data.umidade_interna + '<sup style="font-size: 20px">%</sup>';
+                            document.getElementById("u_externa").innerHTML = data.umidade_externa + '<sup style="font-size: 20px">%</sup>';
+                            document.getElementById("pressao").innerHTML = data.pressao + '<sup style="font-size: 20px">PSI</sup>';
+                            document.getElementById("temp1").innerHTML = data.temp1 + '<sup style="font-size: 20px">%</sup>';
+                            document.getElementById("temp2").innerHTML = data.temp2 + '<sup style="font-size: 20px">%</sup>';
+                            document.getElementById("temp3").innerHTML = data.temp3 + '<sup style="font-size: 20px">%</sup>';
+                            document.getElementById("temp4").innerHTML = data.temp4 + '<sup style="font-size: 20px">%</sup>';
+                            document.getElementById("temp5").innerHTML = data.temp5 + '<sup style="font-size: 20px">%</sup>';
+
+                            var dataDoBancoDeDados = data.time;
+                            var data = new Date(dataDoBancoDeDados);
+                            var data = new Date(dataDoBancoDeDados);
+                            var dataFormatada = data.toLocaleDateString('pt-BR');
+                            var horaFormatada = data.toLocaleTimeString('pt-BR');
+                            var dataHoraFormatada = dataFormatada + ' ás ' + horaFormatada;
+                            document.getElementById("data").innerHTML = "Dados atualizados em: " + dataHoraFormatada;
+                        }
+                    });
+
+                }
+            });
+        }
+
+        setInterval(atualizar, 3000);
+
+    });
+</script>
+
+{% endblock extra_scripts %}

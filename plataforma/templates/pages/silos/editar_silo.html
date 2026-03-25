@@ -1,0 +1,98 @@
+{% extends 'layouts/base.html' %}
+{% load static %}
+{% block title %} Editar silo{% endblock title %}
+{% block extrastyle %}
+<!-- DataTables -->
+<link rel="stylesheet" href="{% static 'plugins/datatables-bs4/css/dataTables.bootstrap4.min.css' %}">
+<link rel="stylesheet" href="{% static 'plugins/datatables-responsive/css/responsive.bootstrap4.min.css' %}">
+<link rel="stylesheet" href="{% static 'plugins/datatables-buttons/css/buttons.bootstrap4.min.css' %}">
+{% endblock extrastyle %}
+{% block bodyclass %} hold-transition sidebar-mini {% endblock bodyclass %}
+{% block content %}
+<!-- Content Wrapper. Contains page content -->
+<div class="content-wrapper">
+    <!-- Content Header (Page header) -->
+    <section class="content-header">
+        <div class="container-fluid">
+            <div class="row mb-2">
+                <div class="col-sm-6">
+                    <h1>Editar silo</h1>
+                </div>
+            </div>
+            <div class="card o-hidden border-0 shadow-lg my-5">
+                <div class="card-body p-0">
+                    <!-- Nested Row within Card Body -->
+                    <div class="row">
+                        <div class="col-lg">
+                            <div class="p-5">
+                                <form action="{% url 'form_editar_silo' silo.id_silo %}" method="POST">
+                                    {% csrf_token %}
+
+                                    <div class="row">
+                                        <div class="form-group col-sm-4">
+                                            <label for="identificacao">Nome de identificação</label>
+                                            <input type="text" class="form-control" id="identificacao" value="{{ silo.identificacao }}"
+                                                   name="identificacao"
+                                                   placeholder="Digite aqui" required>
+                                        </div>
+
+                                    </div>
+
+                                    <hr>
+                                    <div class="row">
+                                    <div class="form-group col-sm-2 ">
+                                            <label>Status</label>
+                                             <select id="status" name="status" class="form-control" required>
+                                                <option value="Pendente de verificação"
+                                                        {% if silo.status == 'Pendente de verificação' %}selected{% endif %}>
+                                                    Pendente de verificação
+                                                </option>
+                                                <option value="Em conformidade"
+                                                        {% if silo.status == 'Em conformidade' %}selected{% endif %}>
+                                                    Em conformidade
+                                                </option>
+                                                <option value="Não conformidade"
+                                                        {% if silo.status == 'Não conformidade' %}selected{% endif %}>
+                                                    Não conformidade
+                                                </option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                     <div class="text">
+                                          <label>Observação</label>
+                                    </div>
+                                     <div class="form-group">
+                                        {% if silo.observacao %}
+                                        <textarea class="form-control form-control-user"
+                                                  name="observacao" rows="3">{{ silo.observacao }}</textarea>
+                                        {% else %}
+                                        <textarea class="form-control form-control-user"
+                                                  name="observacao" rows="3"></textarea>
+                                        {% endif %}
+                                    </div>
+                                    <button type="submit" class="btn btn-success float-right">
+                                        Alterar
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+{% endblock content %}
+{% block extra_scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.inputmask/5.0.6/jquery.inputmask.min.js"></script>
+<!--<script>-->
+<!--    $(document).ready(function() {-->
+<!--        Inputmask().mask(document.querySelectorAll("[data-inputmask]"));-->
+<!--        $('#cpf').inputmask('999.999.999-99'); // Aplica a máscara de CPF ao campo com o ID 'cpf'-->
+<!--        $('#telefone').inputmask('(99) 9999-9999'); // Máscara para telefone-->
+<!--        $('#celular').inputmask('(99) 99999-9999'); // Máscara para celular-->
+<!--    });-->
+<!--</script>-->
+{% endblock extra_scripts %}

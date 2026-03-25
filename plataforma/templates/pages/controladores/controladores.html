@@ -1,0 +1,121 @@
+{% extends 'layouts/base.html' %}
+{% load static %}
+{% block title %} Controladores{% endblock title %}
+{% block extrastyle %}
+<!-- DataTables -->
+<link rel="stylesheet" href="{% static 'plugins/datatables-bs4/css/dataTables.bootstrap4.min.css' %}">
+<link rel="stylesheet" href="{% static 'plugins/datatables-responsive/css/responsive.bootstrap4.min.css' %}">
+<link rel="stylesheet" href="{% static 'plugins/datatables-buttons/css/buttons.bootstrap4.min.css' %}">
+{% endblock extrastyle %}
+{% block bodyclass %} hold-transition sidebar-mini {% endblock bodyclass %}
+{% block content %}
+<!-- Content Wrapper. Contains page content -->
+<div class="content-wrapper">
+    <!-- Content Header (Page header) -->
+    <section class="content-header">
+        <div class="container-fluid">
+            <div class="row mb-2">
+                <div class="col-sm-6">
+                    <h4>Gerenciar controladores referente: {{silo.identificacao}}</h4>
+                </div>
+                <div class="col ">
+                    <button onclick="window.location.href='{% url 'cadastrar_controlador' silo.id_silo %}'"
+                            class="btn btn-primary float-right">
+                        Cadastrar controlador
+                    </button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Os controladores são listados aqui</h3>
+                </div>
+                <!-- /.card-header -->
+                <div class="card-body">
+                    <table id="example1" class="table table-bordered table-striped">
+                        <thead>
+                        <tr>
+                            <th>Identificação</th>
+                            <th>Tipo</th>
+                            <th>Status</th>
+                            <th>Observações</th>
+                            <th>Ações</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for controlador in controladores %}
+                        <tr>
+                            <td>{{controlador.nome}}</td>
+                            <td>{{controlador.tipo}}</td>
+                            <td>{{controlador.status}}</td>
+                            <td>{{controlador.observacao}}</td>
+                            <td>
+                                <!-- Default dropleft button -->
+                                <div class="btn-group dropleft">
+                                    <button type="button" class="btn btn-primary btn-sm dropdown-toggle"
+                                            data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                        Gerenciar
+                                    </button>
+                                    <div class="dropdown-menu">
+                                        <a class="dropdown-item" href="{% url 'editar_controlador' controlador.id_controlador %}">Editar</a>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+{% endblock content %}
+{% block extra_scripts %}
+<!-- DataTables  & Plugins -->
+
+<script src="{% static 'plugins/datatables/jquery.dataTables.min.js' %}"></script>
+<script src="{% static 'plugins/datatables-bs4/js/dataTables.bootstrap4.min.js' %}"></script>
+<script src="{% static 'plugins/datatables-responsive/js/dataTables.responsive.min.js' %}"></script>
+<script src="{% static 'plugins/datatables-responsive/js/responsive.bootstrap4.min.js' %}"></script>
+<script src="{% static 'plugins/datatables-buttons/js/dataTables.buttons.min.js' %}"></script>
+<script src="{% static 'plugins/datatables-buttons/js/buttons.bootstrap4.min.js' %}"></script>
+<script src="{% static 'plugins/jszip/jszip.min.js' %}"></script>
+<script src="{% static 'plugins/pdfmake/pdfmake.min.js' %}"></script>
+<script src="{% static 'plugins/pdfmake/vfs_fonts.js' %}"></script>
+<script src="{% static 'plugins/datatables-buttons/js/buttons.html5.min.js' %}"></script>
+<script src="{% static 'plugins/datatables-buttons/js/buttons.print.min.js' %}"></script>
+<script src="{% static 'plugins/datatables-buttons/js/buttons.colVis.min.js' %}"></script>
+
+<!-- Page specific script -->
+<script>
+
+    $(function () {
+        $("#example1").DataTable({
+            "responsive": true, "lengthChange": false, "autoWidth": false,
+            "buttons": ["csv", "excel", "pdf", "print", "colvis"],
+            "language": {
+                "lengthMenu": " _MENU_ ",
+                "search": "Buscar",
+                "zeroRecords": "Nenhum registro encontrado",
+                "info": "Página _PAGE_ de _PAGES_",
+                "infoEmpty": "Nenhum registro encontrado",
+                "infoFiltered": "(filtrado de _MAX_ registros totais)",
+                paginate: {
+                    first: "Primeira",
+                    previous: "Anterior",
+                    next: "Próxima",
+                    last: "Ùltima"
+                }, buttons: {
+                    colvis: 'Colunas visíveis',
+                    print: 'Imprimir',
+                }
+            },
+        }).buttons().container().appendTo('#example1_wrapper .col-md-6:eq(0)');
+
+    });
+
+
+</script>
+{% endblock extra_scripts %}

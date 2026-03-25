@@ -1,0 +1,96 @@
+{% load i18n static admin_adminlte %}
+
+<ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu" data-accordion="false">
+    <!-- Add icons to the links using the .nav-icon class
+           with font-awesome or any other icon font library -->
+
+    {% admin_get_menu as app_list %}
+    {% if app_list %}
+    {% for app in app_list %}
+    {% if app.has_perms and not app.pinned %}
+    <li class="nav-item {% if 'dashboard' in parent %} menu-open {% endif %}">
+        <a class="nav-link {% if app_label != app.label and app.url not in request.path|urlencode  %} collapsed{% endif %}"
+           data-bs-toggle="collapse" data-bs-target="#submenu-{{ app.app_label }}" href="{{ app.url }}">
+            <i class="nav-icon {{ app.icon }}"></i>
+            <p>
+                {{ app.label|slice:10 }}{% if app.label|length > 10 %}..{% endif %}
+                <i class="right fas fa-angle-left"></i>
+            </p>
+        </a>
+
+        {% if app.models %}
+        <ul class="nav nav-treeview">
+            {% for model in app.models %}
+            {% if model.url %}
+            <li class="nav-item">
+                <a class="nav-link {% if 'bootstrap-tables' in segment or model.url in request.path|urlencode %} active {% endif %}"
+                   href="{{ model.url }}">
+                    <i class="far fa-circle nav-icon"></i>
+                    <p>{{ model.label }}</p>
+                </a>
+            </li>
+            {% else %}
+            <li class="nav-item">{{ model.label }}</li>
+            {% endif %}
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </li>
+    {% endif %}
+    {% endfor %}
+    {% endif %}
+
+    {% if request.user.is_authenticated %}
+
+    <li class="nav-header">INÍCIO</li>
+    <li class="nav-item {% if 'dashboard' in parent %}  {% endif %}">
+        <a href="{% url 'dashboard' %}" class="nav-link {% if 'dashboard' in segment %} active {% endif %} ">
+            <i class="nav-icon far fa-calendar-alt"></i>
+            <p>
+                Dashboard
+            </p>
+        </a>
+    </li>
+
+
+    <li class="nav-header">ACESSO RÁPIDO</li>
+    <li class="nav-item {% if 'silo' in parent %} menu-open {% endif %}">
+        <a href="#" class="nav-link {% if 'silo' in parent %}active{% endif %}">
+            <i class="nav-icon fas fa-chart-pie"></i>
+            <p>
+                Silos
+                <i class="right fas fa-angle-left"></i>
+            </p>
+        </a>
+        <ul class="nav nav-treeview">
+            <li class="nav-item">
+                <a href="{% url 'silos' %}" class="nav-link {% if 'silos' in segment %}active{% endif %}">
+                    <i class="nav-icon fas fa-list"></i>
+                    <p>Listar silos</p>
+                </a>
+            </li>
+
+        </ul>
+    </li>
+
+        <li class="nav-item {% if 'alerta' in parent %} menu-open {% endif %}">
+        <a href="#" class="nav-link {% if 'alerta' in parent %}active{% endif %}">
+            <i class="nav-icon fas fa-solid fa-bell"></i>
+            <p>
+                Alertas
+                <i class="right fas fa-angle-left"></i>
+            </p>
+        </a>
+        <ul class="nav nav-treeview">
+            <li class="nav-item">
+                <a href="{% url 'alertas' %}" class="nav-link {% if 'alertas' in segment %}active{% endif %}">
+                    <i class="nav-icon fas fa-list"></i>
+                    <p>Listar alertas</p>
+                </a>
+            </li>
+
+        </ul>
+    </li>
+    {% endif %}
+
+</ul>

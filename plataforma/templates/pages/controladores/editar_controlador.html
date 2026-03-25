@@ -1,0 +1,96 @@
+{% extends 'layouts/base.html' %}
+{% load static %}
+{% block title %} Editar controlador{% endblock title %}
+{% block extrastyle %}
+<!-- DataTables -->
+<link rel="stylesheet" href="{% static 'plugins/datatables-bs4/css/dataTables.bootstrap4.min.css' %}">
+<link rel="stylesheet" href="{% static 'plugins/datatables-responsive/css/responsive.bootstrap4.min.css' %}">
+<link rel="stylesheet" href="{% static 'plugins/datatables-buttons/css/buttons.bootstrap4.min.css' %}">
+{% endblock extrastyle %}
+{% block bodyclass %} hold-transition sidebar-mini {% endblock bodyclass %}
+{% block content %}
+<!-- Content Wrapper. Contains page content -->
+<div class="content-wrapper">
+    <!-- Content Header (Page header) -->
+    <section class="content-header">
+        <div class="container-fluid">
+            <div class="row mb-2">
+                <div class="col-sm-6">
+                    <h1>Editar controlador</h1>
+                </div>
+            </div>
+            <div class="card o-hidden border-0 shadow-lg my-5">
+                <div class="card-body p-0">
+                    <!-- Nested Row within Card Body -->
+                    <div class="row">
+                        <div class="col-lg">
+                            <div class="p-5">
+                                <form action="{% url 'form_editar_controlador' controlador.id_controlador %}" method="POST">
+                                    {% csrf_token %}
+
+                                    <div class="row">
+                                        <div class="form-group col-sm-4">
+                                            <label for="nome">Nome de identificação</label>
+                                            <input type="text" class="form-control" id="nome" value="{{ controlador.nome }}"
+                                                   name="nome"
+                                                   placeholder="Digite aqui" required>
+                                        </div>
+                                        <div class="form-group col-sm-4">
+
+                                                  <label for="tipo">Tipo de controlador</label>
+                                                  <select id="tipo" name="tipo" class="form-control" required>
+                                                      <option value="" disabled>Selecione o Tipo</option>
+                                                      <option value="Aeração" {% if controlador.tipo == 'Aeração' %} selected {% endif %}>Aeração</option>
+                                                  </select>
+
+                                        </div>
+                                        <div class="form-group col-sm-2 ">
+                                        <label for="status">Status do Sensor</label>
+                                        <select id="status" name="status" class="form-control" required>
+                                            <option value="" disabled selected>Selecione um status</option>
+                                            <option value="Ligado" {% if controlador.status == 'Ligado' %} selected {% endif %}>Ligado</option>
+                                            <option value="Desligado" {% if controlador.status == 'Desligado' %} selected {% endif %}>Desligado</option>
+                                        </select>
+                                        </div>
+                                    </div>
+
+                                    <hr>
+
+                                     <div class="text">
+                                          <label>Observação</label>
+                                    </div>
+                                     <div class="form-group">
+                                        {% if controlador.observacao %}
+                                        <textarea class="form-control form-control-user"
+                                                  name="observacao" rows="3">{{ controlador.observacao }}</textarea>
+                                        {% else %}
+                                        <textarea class="form-control form-control-user"
+                                                  name="observacao" rows="3"></textarea>
+                                        {% endif %}
+                                    </div>
+                                    <button type="submit" class="btn btn-success float-right">
+                                        Alterar
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+{% endblock content %}
+{% block extra_scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.inputmask/5.0.6/jquery.inputmask.min.js"></script>
+<!--<script>-->
+<!--    $(document).ready(function() {-->
+<!--        Inputmask().mask(document.querySelectorAll("[data-inputmask]"));-->
+<!--        $('#cpf').inputmask('999.999.999-99'); // Aplica a máscara de CPF ao campo com o ID 'cpf'-->
+<!--        $('#telefone').inputmask('(99) 9999-9999'); // Máscara para telefone-->
+<!--        $('#celular').inputmask('(99) 99999-9999'); // Máscara para celular-->
+<!--    });-->
+<!--</script>-->
+{% endblock extra_scripts %}

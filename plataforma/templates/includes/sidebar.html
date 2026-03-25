@@ -1,0 +1,33 @@
+{% load i18n static admin_adminlte %}
+
+<!-- Main Sidebar Container -->
+<aside class="main-sidebar sidebar-dark-primary elevation-4">
+  <!-- Brand Logo -->
+  <div class="brand-link text-center">
+    <img class="" src="{% static 'dist/img/logo_branca.png' %}" width="42%" alt="Logo">
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <!-- Sidebar user panel (optional) -->
+    <div class="user-panel mt-3 pb-3 mb-3 d-flex">
+<!--      <div class="image">-->
+<!--        <img src="{% static 'dist/img/' %}" class="img-circle elevation-2" alt="User Image">-->
+<!--      </div>-->
+      <div class="info">
+        {% if request.user.is_authenticated %}
+          <a  class="d-block">Olá, {{request.user.username}}</a>
+        {% else %}
+          <a  class="d-block">Nome usuario</a>
+        {% endif %}        
+      </div>
+    </div>
+
+    <!-- Sidebar Menu -->
+    <nav class="mt-2">
+      {% include 'includes/menu-list.html' %}
+    </nav>
+    <!-- /.sidebar-menu -->
+  </div>
+  <!-- /.sidebar -->
+</aside>

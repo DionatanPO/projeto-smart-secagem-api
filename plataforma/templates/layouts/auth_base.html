@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Secagem | {% block title %}{% endblock title %}</title>
+        <link rel="icon" type="image/x-icon" href="{% static 'dist/img/icone.ico' %}"/>
+    <!-- Google Font: Source Sans Pro -->
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="{% static 'plugins/fontawesome-free/css/all.min.css' %}">
+    <!-- Theme style -->
+<!--    <link rel="stylesheet" href="{% static 'dist/css/adminlte.min.css' %}">-->
+    <link rel="stylesheet" href="{% static 'dist/css/adminlte.css' %}">
+</head>
+<body class="hold-transition sidebar-collapse layout-top-nav " style=" background-color: #323233;">
+<!-- Navbar -->
+{% include 'includes/navigation-website.html' %}
+<!-- /.navbar -->
+
+{% block content %}{% endblock content %}
+
+{% block footer %}
+{% include 'includes/footer.html' %}
+{% endblock footer %}
+
+
+</div>
+
+{% include 'includes/scripts.html' %}
+{% block extra_scripts %}{% endblock extra_scripts %}
+
+
+</body>
+</html>

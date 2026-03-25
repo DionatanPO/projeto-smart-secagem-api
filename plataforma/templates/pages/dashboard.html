@@ -1,0 +1,219 @@
+{% extends 'layouts/base.html' %}
+{% load static %}
+
+{% block title %}Dashboard {% endblock title %}
+
+{% block extrastyle %}
+
+<!-- Ionicons -->
+<link rel="stylesheet" href="https://code.ionicframework.com/ionicons/2.0.1/css/ionicons.min.css">
+<!-- Tempusdominus Bootstrap 4 -->
+<link rel="stylesheet" href="{% static 'plugins/tempusdominus-bootstrap-4/css/tempusdominus-bootstrap-4.min.css' %}">
+<!-- iCheck -->
+<link rel="stylesheet" href="{% static 'plugins/icheck-bootstrap/icheck-bootstrap.min.css' %}">
+<!-- JQVMap -->
+<link rel="stylesheet" href="{% static 'plugins/jqvmap/jqvmap.min.css' %}">
+<!-- Daterange picker -->
+<link rel="stylesheet" href="{% static 'plugins/daterangepicker/daterangepicker.css' %}">
+<!-- summernote -->
+<link rel="stylesheet" href="{% static 'plugins/summernote/summernote-bs4.min.css' %}">
+
+{% endblock extrastyle %}
+
+{% block bodyclass %} hold-transition sidebar-mini layout-fixed {% endblock bodyclass %}
+
+{% block content %}
+<!-- Content Wrapper. Contains page content -->
+<div class="content-wrapper">
+    <!-- Content Header (Page header) -->
+
+    <div class="content-header">
+
+        <div class="callout callout-info">
+            ℹ️Para assegurar uma visão dinâmica e precisa dos dados, nossa plataforma realiza atualizações costantemente. Essa abordagem contínua e ágil garante acesso às informações mais recentes e
+            relevantes.
+        </div>
+
+        <div class="container-fluid">
+            <h4 class="m-0">Dashboard</h4>
+            <br>
+            <div class="row align-items-center">
+
+                <div class="col col-lg-3">
+                    <h6 class="m-0">Visão geral {{silo.identificacao}}</h6>
+                </div>
+                <div class="col col-lg-9 text-right">
+
+                    <h6 id="data" class="m-0">Última atualização em: {{ dados_sensores.0.ultimo_dado.time }}</h6>
+                </div>
+            </div>
+
+            <div class="row align-items-center">
+
+                <div class="col col-lg-3">
+                    <div class="text-center text-xxl-start my-2">
+
+                        <div class="text-center text-xxl-start my-2">
+                            <div class="card text-dark bg-light mb-3" style="max-width: 18rem;">
+                                <div class="card-header">Controladores</div>
+                                <div class="card-body">
+                                    <ul id="list_controladores" class="list-group list-group-flush">
+                                        {% for controlador in controladores %}
+                                        <li id="controlador-" class="list-group-item">
+                                            🔹 {{ controlador.nome }} = {{ controlador.status }}
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col col-lg-6">
+                    <!-- Header profile picture-->
+                    <div class="d-flex ">
+                        <img class="img-fluid" style="border-radius: 2vh" width="98%"
+                            src="{% static 'dist/img/prototipo.png' %}" alt="..." />
+                    </div>
+                    <div class="row">
+                        <div class="col col-lg-3">
+                            <div class="card text-dark bg-light mb-3" style="max-width: 18rem;">
+                                <div class="card-header">Status</div>
+                                <div class="card-body">
+                                    <ul class="list-group list-group-flush">
+                                        <li id="status" class="list-group-item">{{silo.status}}</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col col-lg-3">
+                            <div class="card text-dark bg-light mb-9" style="max-width: 18rem;">
+                                <div class="card-header">Observações</div>
+                                <div class="card-body">
+                                    <ul class="list-group list-group-flush">
+                                        <li id="observacoes" class="list-group-item">{{silo.observacao}}</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="col col-lg-3">
+                    <div class="text-center text-xxl-start my-2">
+                        <div class="card text-dark bg-light mb-3" style="max-width: 30rem;">
+                            <div class="card-header">Sensores</div>
+                            <div class="card-body">
+                                <ul id="list_sensores" class="list-group list-group-flush">
+                                    {% for dado_sensor in dados_sensores %}
+                                    <li id="sensor-" class="list-group-item">
+                                        🔹 {{ dado_sensor.sensor.nome }}
+                                        - {{ dado_sensor.sensor.tipo }}
+                                        = {{ dado_sensor.ultimo_dado.valor }} {{ dado_sensor.sensor.unidade }}
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+{% endblock content %}
+
+{% block extra_scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment-with-locales.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/locale/pt-br.min.js"></script>
+
+
+<script>
+    $(document).ready(function () {
+        var token = "{{ token }}";  // Obtém o token do usuário logado
+
+
+
+        function atualizar() {
+
+            $.ajax({
+                method: "GET",
+                dataType: "JSON",
+                contentType: "application/json",
+                url: "http://192.168.1.205:8000/api/silos/{{silo.id_silo}}",
+                headers: {
+                    "Authorization": "Token " + token  // Passa o token como cabeçalho de autorização
+                },
+                success: function (data) {
+                    document.getElementById("status").innerHTML = data.status;
+                    document.getElementById("observacoes").innerHTML = data.observacao;
+
+                    $.ajax({
+                        method: "GET",
+                        dataType: "JSON",
+                        contentType: "application/json",
+                        url: "http://192.168.1.205:8000/api/controladores/?silo_id={{silo.id_silo}}",
+                        headers: {
+                            "Authorization": "Token " + token  // Passa o token como cabeçalho de autorização
+                        },
+                        success: function (data) {
+                            // Limpa a lista existente de controladores
+                            $("#list_controladores").empty();
+
+                            // Itera sobre os dados recebidos e adiciona cada controlador à lista
+                            data.forEach(function (controlador) {
+                                var listItem = `<li id="controlador-${controlador.id_controlador}" class="list-group-item">
+                                🔹 ${controlador.nome} = ${controlador.status}
+                            </li>`;
+                                $("#list_controladores").append(listItem);
+                            });
+                        },
+                    });
+
+                    $.ajax({
+                        method: "GET",
+                        dataType: "JSON",
+                        contentType: "application/json",
+                        url: "http://192.168.1.205:8000/api/sensores/?silo_id={{silo.id_silo}}",
+                        headers: {
+                            "Authorization": "Token " + token  // Passa o token como cabeçalho de autorização
+                        },
+                        success: function (data) {
+                            // Limpa a lista existente de controladores
+                            $("#list_sensores").empty();
+
+                            data.forEach(function (sensor) {
+                                var ultimoDadoSensor = sensor.ultimo_dado_sensor;
+
+                                // Verifica se ultimoDadoSensor está definido e não é vazio
+                                if (ultimoDadoSensor && ultimoDadoSensor.length > 0) {
+
+                                    var listItem = `<li id="sensor-${sensor.id_sensor}" class="list-group-item">
+                                    🔹 ${sensor.nome} - ${sensor.tipo} = ${ultimoDadoSensor[0].valor} ${sensor.unidade}
+                                </li>`;
+                                    $("#list_sensores").append(listItem);
+
+                                    var formattedDate = moment(ultimoDadoSensor[0].time).locale('pt-br').format("D [de] MMMM [de] YYYY [às] HH:mm");
+                                    document.getElementById("data").innerHTML = "Última atualização em: " + formattedDate;
+
+                                } else {
+                                    console.log("Nenhum dado encontrado para o sensor:", sensor.id_sensor);
+                                }
+                            });
+                        },
+                    });
+
+                }
+            });
+
+
+        }
+
+        setInterval(atualizar, 3000);
+
+    });
+</script>
+
+{% endblock extra_scripts %}

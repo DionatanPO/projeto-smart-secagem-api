@@ -1,0 +1,83 @@
+{% extends 'layouts/auth_base.html' %}
+{% load static %}
+
+{% block title %} Entrar {% endblock title %}
+
+{% block bodyclass %} Início {% endblock bodyclass %}
+
+{% block content %}
+
+<div class="content-wrapper">
+    <!-- Content Header (Page header) -->
+    <div class="container-fluid">
+        <br>
+        <!-- Contact form-->
+        <div class="row gx-5  justify-content-center">
+
+            <div class="row align-items-center">
+                <div class="col my-5">
+                    <!-- Header text content-->
+                    <div class="text-center text-xxl-start my-5">
+                        <!--                            <div class="badge bg-gradient-primary-to-secondary text-white my-4">-->
+                        <!--                                <div class="text-uppercase">SMART SECAGEM</div>-->
+                        <!--                            </div>-->
+                        <!--                            <div class="fs-3 fw-light text-muted">Monitore grãos e sementes com segurança e-->
+                        <!--                                eficiência-->
+                        <!--                            </div>-->
+                        <h1 class="display-5 fw-bolder mb-5"><span class="text-gradient d-inline">Smart Secagem</br>
+                            Software de gerenciamento de silos</span>
+                        </h1>
+                    </div>
+                    <div class="text-center my-5">
+                        <h4 class=" fw-bolder"><span
+                                class="text-gradient d-inline">Desenvolvido por:</span></h4>
+                    </div>
+                    <br>
+                    <div class="d-flex justify-content-center  ">
+                        <img class="img-fluid" src="{% static 'dist/img/logo2.png' %}" width="350"
+                             alt="..."/>
+                    </div>
+                </div>
+<!--                <iframe width="560" height="315" src="https://www.youtube.com/embed/OA-etlKXEEU?si=nazUKtj5J5AKKkvL"-->
+<!--                        title="YouTube video player" frameborder="0"-->
+<!--                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"-->
+<!--                        allowfullscreen></iframe>-->
+
+            </div>
+        </div>
+
+        <div class="  row gx-5  justify-content-center">
+            <div class=" container">
+                <div class="col">
+                    <div class="text-center my-5">
+                        <h2 class=" fw-bolder"><span
+                                class="text-gradient d-inline">Sobre o Smart Secagem</span></h2>
+                        <!--                        <p class="lead fw-light mb-4">My name is Start Bootstrap and I help brands grow.</p>-->
+                        <p class="text-muted">Você quer secar os seus grãos e sementes
+                            de um jeito novo e inteligente?
+                            Então você precisa conhecer a Secagem Digital, uma tecnologia que te ajuda a fazer isso
+                            com
+                            segurança e eficiência. Ela usa sensores digitais que medem a temperatura e a umidade do
+                            ar,
+                            e te mostra como está a secagem em tempo real. E assim, você pode ajustar a aeração
+                            automática dos secadores, que são do tipo estacionário e de fluxo misto. Isso economiza
+                            energia e preserva a qualidade do produto. E o melhor: você pode controlar tudo pelo
+                            celular, com o software da Secagem Digital. Ele te mostra os dados dos sensores, faz
+                            gráficos e relatórios, e te avisa se algo der errado. Você também pode acessar em uma
+                            API,
+                            na nuvem, de qualquer lugar do mundo. Assim, a Secagem Digital é uma tecnologia que faz
+                            a
+                            diferença no agronegócio, porque reduz custos, aumenta a produtividade e a segurança, e
+                            mantém a qualidade dos grãos.</p>
+                        <div class="d-flex justify-content-center fs-2 gap-4">
+                            <a class="text-gradient" href="#!"><i class="bi bi-facebook"></i></a>
+                            <a class="text-gradient" href="#!"><i class="bi bi-instagram"></i></a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
