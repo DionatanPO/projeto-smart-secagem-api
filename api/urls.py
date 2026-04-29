@@ -1,12 +1,13 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework.authtoken.views import obtain_auth_token
-from .views import SensorDataViewSet, UserViewSet, logout_view, SiloViewSet, TelemetryViewSet
+from .views import SensorDataViewSet, UserViewSet, logout_view, SiloViewSet, TelemetryViewSet, FarmViewSet
 
 router = DefaultRouter()
 router.register(r'sensores', SensorDataViewSet)
 router.register(r'usuarios', UserViewSet)
 router.register(r'silos', SiloViewSet)
+router.register(r'fazendas', FarmViewSet, basename='farm')
 router.register(r'telemetria', TelemetryViewSet)
 
 urlpatterns = [

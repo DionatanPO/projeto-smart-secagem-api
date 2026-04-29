@@ -46,6 +46,21 @@ class Telemetry(models.Model):
     def __str__(self):
         return f"{self.sensor.sensor_id} | {self.temperatura}°C | {self.timestamp}"
 
+class Farm(models.Model):
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='farms', verbose_name="Dono/Usuário")
+    name = models.CharField(max_length=100, verbose_name="Nome da Fazenda/Armazém")
+    location = models.CharField(max_length=200, blank=True, null=True, verbose_name="Localização/Cidade")
+    description = models.TextField(blank=True, null=True, verbose_name="Observações da Unidade")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Fazenda/Armazém'
+        verbose_name_plural = 'Fazendas/Armazéns'
+
+    def __str__(self):
+        return self.name
+
 class Silo(models.Model):
     STATUS_CHOICES = (
         ('ativo', 'Ativo'),
@@ -54,10 +69,12 @@ class Silo(models.Model):
     )
     
     name = models.CharField(max_length=100, verbose_name="Nome do Silo")
+    farm = models.ForeignKey(Farm, on_delete=models.CASCADE, related_name='silos', null=True, blank=True, verbose_name="Fazenda/Armazém")
     capacity = models.FloatField(verbose_name="Capacidade Máxima (Toneladas)")
     current_quantity = models.FloatField(default=0, verbose_name="Quantidade Atual (Toneladas)")
     product_type = models.CharField(max_length=100, blank=True, null=True, verbose_name="Tipo de Produto")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ativo', verbose_name="Status")
+    observations = models.TextField(blank=True, null=True, verbose_name="Observações")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
 

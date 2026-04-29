@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import SensorData, User, Silo, Telemetry
+from .models import SensorData, User, Silo, Telemetry, Farm
 
 class SensorDataSerializer(serializers.ModelSerializer):
     class Meta:
@@ -14,7 +14,15 @@ class TelemetrySerializer(serializers.ModelSerializer):
         model = Telemetry
         fields = ['id', 'sensor', 'sensor_physical_id', 'temperatura', 'umidade', 'timestamp', 'received_at']
 
+class FarmSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Farm
+        fields = '__all__'
+        read_only_fields = ['owner']
+
 class SiloSerializer(serializers.ModelSerializer):
+    farm_name = serializers.CharField(source='farm.name', read_only=True)
+    
     class Meta:
         model = Silo
         fields = '__all__'

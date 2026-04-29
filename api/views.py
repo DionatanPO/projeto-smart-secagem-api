@@ -2,8 +2,8 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
-from .models import SensorData, User, Silo, Telemetry
-from .serializers import SensorDataSerializer, UserSerializer, SiloSerializer, TelemetrySerializer
+from .models import SensorData, User, Silo, Telemetry, Farm
+from .serializers import SensorDataSerializer, UserSerializer, SiloSerializer, TelemetrySerializer, FarmSerializer
 
 class SensorDataViewSet(viewsets.ModelViewSet):
     queryset = SensorData.objects.all()
@@ -28,10 +28,20 @@ class TelemetryViewSet(viewsets.ModelViewSet):
         if sensor_pk:
             queryset = queryset.filter(sensor_id=sensor_pk)
 
+        # Filtrar por Silo (todos os sensores de um silo)
+        silo_id = self.request.query_params.get('silo') or self.request.query_params.get('silo_id')
+        if silo_id:
+            queryset = queryset.filter(sensor__silo_id=silo_id)
+
         # Filtrar pelo ID físico do sensor (ex: "sensor_01")
         sensor_physical_id = self.request.query_params.get('sensor_id')
         if sensor_physical_id:
             queryset = queryset.filter(sensor__sensor_id=sensor_physical_id)
+
+        # Filtrar por data (YYYY-MM-DD)
+        date_str = self.request.query_params.get('data')
+        if date_str:
+            queryset = queryset.filter(timestamp__date=date_str)
 
         return queryset
 
@@ -58,6 +68,18 @@ class TelemetryViewSet(viewsets.ModelViewSet):
 class SiloViewSet(viewsets.ModelViewSet):
     queryset = Silo.objects.all()
     serializer_class = SiloSerializer
+
+class FarmViewSet(viewsets.ModelViewSet):
+    serializer_class = FarmSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Cada usuário só vê as suas próprias fazendas
+        return Farm.objects.filter(owner=self.request.user)
+
+    def perform_create(self, serializer):
+        # Atribui o usuário logado como dono da fazenda automaticamente
+        serializer.save(owner=self.request.user)
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
