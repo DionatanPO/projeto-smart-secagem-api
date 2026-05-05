@@ -63,8 +63,9 @@ class Farm(models.Model):
 
 class Silo(models.Model):
     STATUS_CHOICES = (
-        ('ativo', 'Ativo'),
-        ('manutencao', 'Em Manutenção'),
+        ('disponivel', 'Disponível'),
+        ('em_uso', 'Em Uso'),
+        ('manutencao', 'Manutenção'),
         ('desativado', 'Desativado'),
     )
     
@@ -72,9 +73,9 @@ class Silo(models.Model):
     farm = models.ForeignKey(Farm, on_delete=models.CASCADE, related_name='silos', null=True, blank=True, verbose_name="Fazenda/Armazém")
     capacity = models.FloatField(verbose_name="Capacidade Máxima (Toneladas)")
     current_quantity = models.FloatField(default=0, verbose_name="Quantidade Atual (Toneladas)")
-    product_type = models.CharField(max_length=100, blank=True, null=True, verbose_name="Tipo de Produto")
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ativo', verbose_name="Status")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='disponivel', verbose_name="Status")
     observations = models.TextField(blank=True, null=True, verbose_name="Observações")
+    
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
 
@@ -85,3 +86,55 @@ class Silo(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.product_type if self.product_type else 'Vazio'})"
+
+class Lote(models.Model):
+    STATUS_CHOICES = (
+        ('aguardando', 'Aguardando'),
+        ('secando', 'Em Secagem'),
+        ('finalizado', 'Finalizado'),
+        ('despachado', 'Despachado'),
+    )
+
+    numero_lote = models.CharField(max_length=50, unique=True, verbose_name="Número do Lote")
+    farm = models.ForeignKey(Farm, on_delete=models.CASCADE, related_name='lotes', verbose_name="Fazenda/Unidade")
+    cultura = models.CharField(max_length=100, verbose_name="Cultura (ex: Milho, Soja)")
+    variedade = models.CharField(max_length=100, blank=True, null=True, verbose_name="Variedade")
+    safra = models.CharField(max_length=20, verbose_name="Safra")
+    
+    # Dados de Entrada
+    peso_inicial = models.FloatField(verbose_name="Peso Inicial (kg)")
+    umidade_inicial = models.FloatField(verbose_name="Umidade Inicial (%)")
+    data_entrada = models.DateTimeField(auto_now_add=True, verbose_name="Data de Entrada")
+    
+    # Dados de Saída (preenchidos depois)
+    peso_final = models.FloatField(null=True, blank=True, verbose_name="Peso Final (kg)")
+    umidade_final = models.FloatField(null=True, blank=True, verbose_name="Umidade Final (%)")
+    data_saida = models.DateTimeField(null=True, blank=True, verbose_name="Data de Saída")
+    
+    # Vínculos e Status
+    silo = models.ForeignKey(Silo, on_delete=models.SET_NULL, null=True, blank=True, related_name='lotes', verbose_name="Silo de Destino")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='aguardando', verbose_name="Status")
+    observacoes = models.TextField(blank=True, null=True, verbose_name="Observações")
+
+    class Meta:
+        ordering = ['-data_entrada']
+        verbose_name = 'Lote'
+        verbose_name_plural = 'Lotes'
+
+    def __str__(self):
+        return f"Lote {self.numero_lote} - {self.cultura}"
+
+    def save(self, *args, **kwargs):
+        # Primeiro salvamos o lote
+        super().save(*args, **kwargs)
+        
+        # Lógica de Automação de Status do Silo
+        if self.silo:
+            if self.status in ['aguardando', 'secando', 'finalizado']:
+                # Se o lote está ativo no silo, o silo fica "em_uso"
+                self.silo.status = 'em_uso'
+                self.silo.save()
+            elif self.status == 'despachado':
+                # Se o lote foi despachado (saiu da unidade), o silo fica "disponivel"
+                self.silo.status = 'disponivel'
+                self.silo.save()

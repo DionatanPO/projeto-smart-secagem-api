@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import SensorData, User, Silo, Telemetry, Farm
+from .models import SensorData, User, Silo, Telemetry, Farm, Lote
 
 class SensorDataSerializer(serializers.ModelSerializer):
     class Meta:
@@ -42,3 +42,44 @@ class UserSerializer(serializers.ModelSerializer):
             password = validated_data.pop('password')
             instance.set_password(password)
         return super().update(instance, validated_data)
+
+class LoteSerializer(serializers.ModelSerializer):
+    farm_name = serializers.CharField(source='farm.name', read_only=True)
+    silo_name = serializers.CharField(source='silo.name', read_only=True)
+
+    class Meta:
+        model = Lote
+        fields = '__all__'
+
+    def validate(self, data):
+        # Para casos de PATCH, precisamos pegar os valores atuais se não forem enviados
+        silo = data.get('silo', self.instance.silo if self.instance else None)
+        peso_inicial = data.get('peso_inicial', self.instance.peso_inicial if self.instance else 0)
+        status = data.get('status', self.instance.status if self.instance else 'aguardando')
+
+        if silo:
+            # 1. Validação de Capacidade (1 Ton = 1000 kg)
+            capacidade_kg = silo.capacity * 1000
+            if peso_inicial > capacidade_kg:
+                raise serializers.ValidationError({
+                    "peso_inicial": f"O peso do lote ({peso_inicial}kg) excede a capacidade do silo ({capacidade_kg}kg)."
+                })
+
+            # 2. Validação de Ocupação
+            # Verifica se já existe um lote ativo (aguardando ou secando) neste silo
+            lote_ativo_query = Lote.objects.filter(
+                silo=silo, 
+                status__in=['aguardando', 'secando']
+            )
+            
+            # Se estivermos editando, excluímos o próprio lote da busca
+            if self.instance:
+                lote_ativo_query = lote_ativo_query.exclude(id=self.instance.id)
+            
+            if lote_ativo_query.exists() and status in ['aguardando', 'secando']:
+                raise serializers.ValidationError({
+                    "silo": "Este silo já possui um lote em processamento ativo."
+                })
+
+        return data
+

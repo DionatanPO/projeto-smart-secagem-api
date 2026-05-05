@@ -2,8 +2,10 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
-from .models import SensorData, User, Silo, Telemetry, Farm
-from .serializers import SensorDataSerializer, UserSerializer, SiloSerializer, TelemetrySerializer, FarmSerializer
+from .models import SensorData, User, Silo, Telemetry, Farm, Lote
+from .serializers import SensorDataSerializer, UserSerializer, SiloSerializer, TelemetrySerializer, FarmSerializer, LoteSerializer
+from .services.gemini_service import GeminiService
+
 
 class SensorDataViewSet(viewsets.ModelViewSet):
     queryset = SensorData.objects.all()
@@ -81,11 +83,21 @@ class FarmViewSet(viewsets.ModelViewSet):
         # Atribui o usuário logado como dono da fazenda automaticamente
         serializer.save(owner=self.request.user)
 
+class LoteViewSet(viewsets.ModelViewSet):
+    queryset = Lote.objects.all()
+    serializer_class = LoteSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Filtra os lotes das fazendas que pertencem ao usuário logado
+        return Lote.objects.filter(farm__owner=self.request.user)
+
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     # Apenas administradores podem gerenciar usuários por padrão
     permission_classes = [IsAdminUser]
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -93,3 +105,37 @@ def logout_view(request):
     # Deleta o token do usuário logado
     request.user.auth_token.delete()
     return Response({"message": "Logout realizado com sucesso"}, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def analisar_silo_view(request, silo_id):
+    try:
+        silo = Silo.objects.get(pk=silo_id)
+        # Buscar as últimas 10 telemetrias dos sensores deste silo
+        telemetrias = Telemetry.objects.filter(sensor__silo=silo).order_by('-timestamp')[:10]
+        
+        dados_lista = []
+        for t in telemetrias:
+            dados_lista.append({
+                "temp": t.temperatura,
+                "umid": t.umidade,
+                "data": t.timestamp.strftime("%d/%m %H:%M")
+            })
+            
+        # Buscar o produto a partir do lote ativo no silo
+        lote_ativo = Lote.objects.filter(silo=silo, status__in=['aguardando', 'secando', 'finalizado']).first()
+        produto = lote_ativo.cultura if lote_ativo else "Vazio/Não informado"
+
+        service = GeminiService()
+        insight = service.analisar_telemetria(
+            silo_name=silo.name,
+            produto=produto,
+            dados_telemetria=dados_lista
+        )
+        
+        return Response({"insight": insight}, status=status.HTTP_200_OK)
+    except Silo.DoesNotExist:
+        return Response({"error": "Silo não encontrado"}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
