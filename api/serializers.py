@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import SensorData, User, Silo, Telemetry, Farm, Lote
+from .models import SensorData, User, Silo, Telemetry, Farm, Lote, Secador, Processo
 
 class SensorDataSerializer(serializers.ModelSerializer):
     class Meta:
@@ -82,4 +82,20 @@ class LoteSerializer(serializers.ModelSerializer):
                 })
 
         return data
+
+class SecadorSerializer(serializers.ModelSerializer):
+    farm_name = serializers.CharField(source='farm.name', read_only=True)
+
+    class Meta:
+        model = Secador
+        fields = '__all__'
+
+class ProcessoSerializer(serializers.ModelSerializer):
+    lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True)
+    lote_cultura = serializers.CharField(source='lote.cultura', read_only=True)
+    responsavel_nome = serializers.CharField(source='responsavel.username', read_only=True)
+
+    class Meta:
+        model = Processo
+        fields = '__all__'
 

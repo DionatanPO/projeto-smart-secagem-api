@@ -2,8 +2,8 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
-from .models import SensorData, User, Silo, Telemetry, Farm, Lote
-from .serializers import SensorDataSerializer, UserSerializer, SiloSerializer, TelemetrySerializer, FarmSerializer, LoteSerializer
+from .models import SensorData, User, Silo, Telemetry, Farm, Lote, Secador, Processo
+from .serializers import SensorDataSerializer, UserSerializer, SiloSerializer, TelemetrySerializer, FarmSerializer, LoteSerializer, SecadorSerializer, ProcessoSerializer
 from .services.gemini_service import GeminiService
 
 
@@ -91,6 +91,26 @@ class LoteViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # Filtra os lotes das fazendas que pertencem ao usuário logado
         return Lote.objects.filter(farm__owner=self.request.user)
+
+class SecadorViewSet(viewsets.ModelViewSet):
+    serializer_class = SecadorSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Filtra os secadores das fazendas que pertencem ao usuário logado
+        return Secador.objects.filter(farm__owner=self.request.user)
+
+class ProcessoViewSet(viewsets.ModelViewSet):
+    serializer_class = ProcessoSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Filtra os processos vinculados às fazendas do usuário logado
+        return Processo.objects.filter(lote__farm__owner=self.request.user)
+
+    def perform_create(self, serializer):
+        # Atribui o usuário logado como responsável pelo processo automaticamente
+        serializer.save(responsavel=self.request.user)
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()

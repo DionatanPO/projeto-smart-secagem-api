@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.utils import timezone
 
 class User(AbstractUser):
     ACCOUNT_TYPES = (
@@ -90,9 +91,16 @@ class Silo(models.Model):
 class Lote(models.Model):
     STATUS_CHOICES = (
         ('aguardando', 'Aguardando'),
-        ('secando', 'Em Secagem'),
         ('finalizado', 'Finalizado'),
         ('despachado', 'Despachado'),
+        ('Secagem (Iniciada)', 'Secagem (Iniciada)'),
+        ('Secagem (Pausada)', 'Secagem (Pausada)'),
+        ('Secagem (Finalizada)', 'Secagem (Finalizada)'),
+        ('Secagem (Cancelada)', 'Secagem (Cancelada)'),
+        ('Aeração (Iniciada)', 'Aeração (Iniciada)'),
+        ('Aeração (Pausada)', 'Aeração (Pausada)'),
+        ('Aeração (Finalizada)', 'Aeração (Finalizada)'),
+        ('Aeração (Cancelada)', 'Aeração (Cancelada)'),
     )
 
     numero_lote = models.CharField(max_length=50, unique=True, verbose_name="Número do Lote")
@@ -113,7 +121,7 @@ class Lote(models.Model):
     
     # Vínculos e Status
     silo = models.ForeignKey(Silo, on_delete=models.SET_NULL, null=True, blank=True, related_name='lotes', verbose_name="Silo de Destino")
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='aguardando', verbose_name="Status")
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='aguardando', verbose_name="Status")
     observacoes = models.TextField(blank=True, null=True, verbose_name="Observações")
 
     class Meta:
@@ -130,11 +138,110 @@ class Lote(models.Model):
         
         # Lógica de Automação de Status do Silo
         if self.silo:
-            if self.status in ['aguardando', 'secando', 'finalizado']:
-                # Se o lote está ativo no silo, o silo fica "em_uso"
-                self.silo.status = 'em_uso'
-                self.silo.save()
-            elif self.status == 'despachado':
-                # Se o lote foi despachado (saiu da unidade), o silo fica "disponivel"
+            # Se o status contiver o nome de uma atividade (indicado pelo parênteses),
+            # ou se estiver explicitamente 'aguardando' ou 'finalizado', o silo está em uso.
+            # O silo só fica disponível se o lote for 'despachado'.
+            
+            if 'despachado' in self.status.lower():
                 self.silo.status = 'disponivel'
-                self.silo.save()
+            else:
+                # Qualquer outro status (aguardando, atividades, finalizados) mantém o silo ocupado
+                self.silo.status = 'em_uso'
+            
+            self.silo.save()
+
+class Secador(models.Model):
+    STATUS_CHOICES = (
+        ('Ativo', 'Ativo'),
+        ('Manutenção', 'Manutenção'),
+        ('Inativo', 'Inativo'),
+    )
+    TIPO_CHOICES = (
+        ('Coluna', 'Coluna'),
+        ('Cascata', 'Cascata'),
+        ('Fluxo Contínuo', 'Fluxo Contínuo'),
+        ('Batelada', 'Batelada'),
+    )
+    FONTE_CALOR_CHOICES = (
+        ('Lenha', 'Lenha'),
+        ('Gás GLP', 'Gás GLP'),
+        ('Biomassa', 'Biomassa'),
+        ('Elétrico', 'Elétrico'),
+    )
+
+    nome = models.CharField(max_length=100, verbose_name="Nome do Secador")
+    farm = models.ForeignKey(Farm, on_delete=models.CASCADE, related_name='secadores', verbose_name="Fazenda/Unidade")
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='Coluna', verbose_name="Tipo")
+    capacidade = models.FloatField(verbose_name="Capacidade (t/h)")
+    fonte_calor = models.CharField(max_length=20, choices=FONTE_CALOR_CHOICES, default='Lenha', verbose_name="Fonte de Calor")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Ativo', verbose_name="Status")
+    observacoes = models.TextField(blank=True, null=True, verbose_name="Observações")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nome']
+        verbose_name = 'Secador'
+        verbose_name_plural = 'Secadores'
+
+    def __str__(self):
+        return f"{self.nome} - {self.farm.name}"
+
+class Processo(models.Model):
+    TIPO_PROCESSO_CHOICES = (
+        ('Secagem', 'Secagem'),
+        ('Aeração', 'Aeração'),
+    )
+    
+    STATUS_CHOICES = (
+        ('Iniciada', 'Iniciada'),
+        ('Pausada', 'Pausada'),
+        ('Finalizada', 'Finalizada'),
+        ('Cancelada', 'Cancelada'),
+    )
+
+    tipo_processo = models.CharField(max_length=20, choices=TIPO_PROCESSO_CHOICES, default='Secagem', verbose_name="Tipo de Atividade")
+    lote = models.ForeignKey(Lote, on_delete=models.CASCADE, related_name='processos', verbose_name="Lote", null=True, blank=True)
+    
+    data_inicio = models.DateTimeField(default=timezone.now, verbose_name="Data de Início")
+    data_fim = models.DateTimeField(null=True, blank=True, verbose_name="Data de Fim")
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Iniciada', verbose_name="Status")
+    responsavel = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Operador Responsável")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-data_inicio']
+        verbose_name = 'Processo Operacional'
+        verbose_name_plural = 'Processos Operacionais'
+
+    def __str__(self):
+        lote_str = self.lote.numero_lote if self.lote else "S/ Lote"
+        return f"{self.tipo_processo} | {lote_str} | {self.status}"
+
+    def save(self, *args, **kwargs):
+        # Validação de Segurança: Um lote não pode ter duas atividades ativas ao mesmo tempo
+        if self.lote and self.status in ['Iniciada', 'Pausada']:
+            # Procuramos outros processos ativos para este mesmo lote (excluindo o atual)
+            conflito = Processo.objects.filter(
+                lote=self.lote, 
+                status__in=['Iniciada', 'Pausada']
+            ).exclude(pk=self.pk).exists()
+            
+            if conflito:
+                raise ValueError(f"O lote {self.lote.numero_lote} já possui uma atividade em andamento ou pausada.")
+
+        # Primeiro salvamos o processo
+        super().save(*args, **kwargs)
+        
+        # Sincronização automática com o status do Lote
+        if self.lote:
+            # Ex: Secagem (Iniciada), Aeração (Finalizada)
+            new_status = f"{self.tipo_processo} ({self.status})"
+            
+            Lote.objects.filter(id=self.lote.id).update(status=new_status)
+            self.lote.refresh_from_db()
+            self.lote.save()
