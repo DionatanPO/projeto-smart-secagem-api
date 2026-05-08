@@ -21,7 +21,12 @@ class SensorData(models.Model):
         ('desativado', 'Desativado'),
     )
     sensor_id = models.CharField(max_length=50, unique=True, verbose_name="ID do Sensor (Físico)")
+    tipo = models.CharField(max_length=100, default='sensor_temperatura', verbose_name="Tipo de Dispositivo")
+    
     silo = models.ForeignKey('Silo', on_delete=models.CASCADE, related_name='sensors', null=True, blank=True)
+    secador = models.ForeignKey('Secador', on_delete=models.CASCADE, related_name='sensors', null=True, blank=True)
+    farm = models.ForeignKey('Farm', on_delete=models.CASCADE, related_name='sensors', null=True, blank=True)
+    
     description = models.CharField(max_length=100, blank=True, verbose_name="Descrição/Localização")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ativo', verbose_name="Status de Operação")
 
@@ -34,8 +39,9 @@ class SensorData(models.Model):
 
 class Telemetry(models.Model):
     sensor = models.ForeignKey(SensorData, on_delete=models.CASCADE, related_name='telemetries')
-    temperatura = models.FloatField(verbose_name="Temperatura (°C)")
-    umidade = models.FloatField(verbose_name="Umidade (%)")
+    temperatura = models.FloatField(null=True, blank=True, verbose_name="Temperatura (°C)")
+    umidade = models.FloatField(null=True, blank=True, verbose_name="Umidade (%)")
+    dados_extras = models.JSONField(default=dict, blank=True, null=True, verbose_name="Dados Extras (JSON)")
     timestamp = models.DateTimeField(verbose_name="Data/Hora da Coleta (ISO)")
     received_at = models.DateTimeField(auto_now_add=True, verbose_name="Data/Hora de Recebimento")
 
@@ -86,7 +92,7 @@ class Silo(models.Model):
         verbose_name_plural = 'Silos'
 
     def __str__(self):
-        return f"{self.name} ({self.product_type if self.product_type else 'Vazio'})"
+        return self.name
 
 class Lote(models.Model):
     STATUS_CHOICES = (
@@ -103,7 +109,7 @@ class Lote(models.Model):
         ('Aeração (Cancelada)', 'Aeração (Cancelada)'),
     )
 
-    numero_lote = models.CharField(max_length=50, unique=True, verbose_name="Número do Lote")
+    numero_lote = models.CharField(max_length=50, unique=True, blank=True, verbose_name="Número do Lote")
     farm = models.ForeignKey(Farm, on_delete=models.CASCADE, related_name='lotes', verbose_name="Fazenda/Unidade")
     cultura = models.CharField(max_length=100, verbose_name="Cultura (ex: Milho, Soja)")
     variedade = models.CharField(max_length=100, blank=True, null=True, verbose_name="Variedade")
@@ -133,21 +139,23 @@ class Lote(models.Model):
         return f"Lote {self.numero_lote} - {self.cultura}"
 
     def save(self, *args, **kwargs):
-        # Primeiro salvamos o lote
+        is_new = self.pk is None
+        
+        # Salvamos primeiro para garantir o ID se for novo
         super().save(*args, **kwargs)
         
+        # Se for novo e não tiver número, gera baseado no ID
+        if is_new and not self.numero_lote:
+            self.numero_lote = f"LOTE-{self.id:04d}"
+            # Atualiza no banco sem disparar o save novamente
+            Lote.objects.filter(pk=self.pk).update(numero_lote=self.numero_lote)
+            
         # Lógica de Automação de Status do Silo
         if self.silo:
-            # Se o status contiver o nome de uma atividade (indicado pelo parênteses),
-            # ou se estiver explicitamente 'aguardando' ou 'finalizado', o silo está em uso.
-            # O silo só fica disponível se o lote for 'despachado'.
-            
             if 'despachado' in self.status.lower():
                 self.silo.status = 'disponivel'
             else:
-                # Qualquer outro status (aguardando, atividades, finalizados) mantém o silo ocupado
                 self.silo.status = 'em_uso'
-            
             self.silo.save()
 
 class Secador(models.Model):
