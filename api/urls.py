@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework.authtoken.views import obtain_auth_token
-from .views import SensorDataViewSet, UserViewSet, logout_view, SiloViewSet, TelemetryViewSet, FarmViewSet, analisar_silo_view, LoteViewSet, SecadorViewSet, ProcessoViewSet
+from .views import SensorDataViewSet, UserViewSet, logout_view, SiloViewSet, TelemetryViewSet, FarmViewSet, analisar_silo_view, LoteViewSet, SecadorViewSet, ProcessoViewSet, ClienteViewSet
 
 router = DefaultRouter()
 router.register(r'sensores', SensorDataViewSet)
@@ -12,6 +12,7 @@ router.register(r'telemetria', TelemetryViewSet)
 router.register(r'lotes', LoteViewSet)
 router.register(r'secadores', SecadorViewSet, basename='secador')
 router.register(r'processos', ProcessoViewSet, basename='processo')
+router.register(r'clientes', ClienteViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

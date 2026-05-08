@@ -253,3 +253,20 @@ class Processo(models.Model):
             Lote.objects.filter(id=self.lote.id).update(status=new_status)
             self.lote.refresh_from_db()
             self.lote.save()
+
+class Cliente(models.Model):
+    nome = models.CharField(max_length=200, verbose_name="Nome Completo")
+    email = models.EmailField(max_length=200, blank=True, null=True, verbose_name="E-mail")
+    telefone = models.CharField(max_length=20, blank=True, null=True, verbose_name="Telefone")
+    cpf_cnpj = models.CharField(max_length=20, blank=True, null=True, verbose_name="CPF/CNPJ")
+    endereco = models.TextField(blank=True, null=True, verbose_name="Endereço")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
+
+    class Meta:
+        ordering = ['nome']
+        verbose_name = 'Cliente'
+        verbose_name_plural = 'Clientes'
+
+    def __str__(self):
+        return self.nome

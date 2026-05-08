@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import SensorData, User, Silo, Telemetry, Farm, Lote, Secador, Processo
+from .models import SensorData, User, Silo, Telemetry, Farm, Lote, Secador, Processo, Cliente
 
 class SensorDataSerializer(serializers.ModelSerializer):
     class Meta:
@@ -99,3 +99,8 @@ class ProcessoSerializer(serializers.ModelSerializer):
         model = Processo
         fields = '__all__'
 
+
+class ClienteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Cliente
+        fields = '__all__'

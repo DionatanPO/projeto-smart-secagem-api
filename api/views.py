@@ -2,8 +2,8 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
-from .models import SensorData, User, Silo, Telemetry, Farm, Lote, Secador, Processo
-from .serializers import SensorDataSerializer, UserSerializer, SiloSerializer, TelemetrySerializer, FarmSerializer, LoteSerializer, SecadorSerializer, ProcessoSerializer
+from .models import SensorData, User, Silo, Telemetry, Farm, Lote, Secador, Processo, Cliente
+from .serializers import SensorDataSerializer, UserSerializer, SiloSerializer, TelemetrySerializer, FarmSerializer, LoteSerializer, SecadorSerializer, ProcessoSerializer, ClienteSerializer
 from .services.gemini_service import GeminiService
 
 
@@ -117,6 +117,11 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     # Apenas administradores podem gerenciar usuários por padrão
     permission_classes = [IsAdminUser]
+    
+class ClienteViewSet(viewsets.ModelViewSet):
+    queryset = Cliente.objects.all()
+    serializer_class = ClienteSerializer
+    permission_classes = [IsAuthenticated]
 
 
 @api_view(['POST'])
