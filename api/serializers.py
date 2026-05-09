@@ -46,6 +46,7 @@ class UserSerializer(serializers.ModelSerializer):
 class LoteSerializer(serializers.ModelSerializer):
     farm_name = serializers.CharField(source='farm.name', read_only=True)
     silo_name = serializers.CharField(source='silo.name', read_only=True)
+    cliente_nome = serializers.CharField(source='cliente.nome', read_only=True)
 
     class Meta:
         model = Lote
