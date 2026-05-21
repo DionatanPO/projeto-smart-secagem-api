@@ -13,6 +13,22 @@ class User(AbstractUser):
     def __str__(self):
         return f"{self.username} ({self.get_account_type_display()})"
 
+    def save(self, *args, **kwargs):
+        # Lógica automática: se for admin, vira superusuário e staff
+        if self.account_type == 'admin':
+            self.is_staff = True
+            self.is_superuser = True
+        # Se for operador, ganha acesso de staff (para usar o painel/API), mas não é superusuário
+        elif self.account_type == 'operador':
+            self.is_staff = True
+            self.is_superuser = False
+        # Outros (visualizador, etc), não têm acesso de admin
+        else:
+            self.is_staff = False
+            self.is_superuser = False
+            
+        super().save(*args, **kwargs)
+
 class SensorData(models.Model):
     STATUS_CHOICES = (
         ('ativo', 'Ativo'),

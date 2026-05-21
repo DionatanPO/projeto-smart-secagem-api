@@ -4,10 +4,10 @@ from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from .models import SensorData, User, Silo, Telemetry, Farm, Lote, Secador, Processo, Cliente
 from .serializers import SensorDataSerializer, UserSerializer, SiloSerializer, TelemetrySerializer, FarmSerializer, LoteSerializer, SecadorSerializer, ProcessoSerializer, ClienteSerializer
-from .services.local_ai_service import LocalAIService
 from django.db.models import Avg, Max, Min
 from django.utils import timezone
 from datetime import timedelta
+from .services.foundation_ai_service import send_chat_request
 
 
 class SensorDataViewSet(viewsets.ModelViewSet):
@@ -134,142 +134,72 @@ def logout_view(request):
     request.user.auth_token.delete()
     return Response({"message": "Logout realizado com sucesso"}, status=status.HTTP_200_OK)
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def analisar_silo_view(request, silo_id):
-    try:
-        silo = Silo.objects.get(pk=silo_id)
-        # Buscar as últimas 10 telemetrias dos sensores deste silo
-        telemetrias = Telemetry.objects.filter(sensor__silo=silo).order_by('-timestamp')[:10]
-        
-        dados_lista = []
-        for t in telemetrias:
-            dados_lista.append({
-                "temp": t.temperatura,
-                "umid": t.umidade,
-                "data": t.timestamp.strftime("%d/%m %H:%M")
-            })
-            
-        # Buscar o produto a partir do lote ativo no silo
-        lote_ativo = Lote.objects.filter(silo=silo, status__in=['aguardando', 'secando', 'finalizado']).first()
-        produto = lote_ativo.cultura if lote_ativo else "Vazio/Não informado"
-
-        service = LocalAIService()
-        insight = service.analisar_telemetria(
-            silo_name=silo.name,
-            produto=produto,
-            dados_telemetria=dados_lista
-        )
-        
-        return Response({"insight": insight}, status=status.HTTP_200_OK)
-    except Silo.DoesNotExist:
-        return Response({"error": "Silo não encontrado"}, status=status.HTTP_404_NOT_FOUND)
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def chat_ia_view(request):
+def chat_view(request):
     """
-    Recebe uma pergunta do usuário e responde com base em um snapshot completo do sistema.
+    Recebe uma mensagem do Flutter e encaminha para a Foundation AI local.
+
+    Campos de entrada (JSON):
+      - prompt (str, obrigatório)
+      - image_base64 (str, opcional)
+      - history (list, opcional)
+      - use_rag (bool, opcional, padrão True)
+      - temperature (float, opcional, padrão 0.2)
+      - system_prompt (str, opcional)
+
+    Retorno:
+      - 200: { "response": "texto da IA" }
+      - 400: { "error": "mensagem" }  (validação)
+      - 503/504/500: { "error": "mensagem" }  (falha na IA)
     """
-    mensagem = request.data.get('message')
-    if not mensagem:
-        return Response({"error": "Mensagem não fornecida"}, status=status.HTTP_400_BAD_REQUEST)
+    prompt = request.data.get('prompt')
 
-    try:
-        # 1. Gerar Snapshot do Sistema
-        contexto = get_sistema_context()
-        
-        # 2. Chamar o serviço de IA
-        service = LocalAIService()
-        resposta = service.responder_chat(mensagem, contexto)
-        
-        return Response({"response": resposta}, status=status.HTTP_200_OK)
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    # Validação do campo obrigatório
+    if not prompt:
+        return Response(
+            {"error": "O campo 'prompt' é obrigatório."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
-def get_sistema_context():
-    """
-    Gera uma string formatada com o estado atual de todo o sistema para a IA.
-    """
-    agora = timezone.now()
-    inicio_dia = agora.replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    contexto = f"Data/Hora Atual: {agora.strftime('%d/%m/%Y %H:%M')}\n\n"
-    
-    # --- Silos e Sensores ---
-    contexto += "--- ESTADO DOS SILOS ---\n"
-    silos = Silo.objects.all()
-    for s in silos:
-        lote_ativo = Lote.objects.filter(silo=s, status__in=['aguardando', 'secando', 'finalizado']).first()
-        produto = lote_ativo.cultura if lote_ativo else "Vazio"
-        contexto += f"Silo: {s.name} | Status: {s.get_status_display()} | Produto: {produto} | Cap: {s.capacity}t\n"
-        
-        for sensor in s.sensors.all():
-            # Estatísticas do dia (últimas 24h ou desde meia-noite)
-            stats = Telemetry.objects.filter(sensor=sensor, timestamp__gte=inicio_dia).aggregate(
-                avg_temp=Avg('temperatura'),
-                max_temp=Max('temperatura'),
-                min_temp=Min('temperatura'),
-                avg_umid=Avg('umidade')
-            )
-            
-            ultima = Telemetry.objects.filter(sensor=sensor).order_by('-timestamp').first()
-            
-            contexto += f"  - Sensor {sensor.sensor_id}: "
-            if ultima:
-                contexto += f"Atual: {ultima.temperatura}°C / {ultima.umidade}% | "
-            if stats['avg_temp']:
-                contexto += f"Hoje -> Média: {stats['avg_temp']:.1f}°C, Máx: {stats['max_temp']:.1f}°C, Mín: {stats['min_temp']:.1f}°C\n"
-            else:
-                contexto += "Sem dados hoje.\n"
-    
-    # --- Lotes ---
-    contexto += "\n--- LOTES ATIVOS ---\n"
-    lotes = Lote.objects.exclude(status='despachado')[:5]
-    for l in lotes:
-        contexto += f"Lote: {l.numero_lote} | Cultura: {l.cultura} | Status: {l.status} | Umidade Inicial: {l.umidade_inicial}%\n"
-        
-    # --- Processos ---
-    contexto += "\n--- PROCESSOS RECENTES ---\n"
-    try:
-        processos = Processo.objects.all().order_by('-data_inicio')[:5]
-        for p in processos:
-            inicio_str = p.data_inicio.strftime('%d/%m %H:%M') if p.data_inicio else "N/A"
-            duracao = ""
-            if p.data_inicio and p.data_fim:
-                duracao = f" | Duração: {p.data_fim - p.data_inicio}"
-            elif p.data_inicio:
-                duracao = " | Em andamento"
-            
-            silo_nome = p.lote.silo.name if (p.lote and p.lote.silo) else "Desconhecido"
-            contexto += f"Processo: {p.tipo_processo} | Status: {p.status} | Silo: {silo_nome} | Início: {inicio_str}{duracao}\n"
-    except Exception as e:
-        contexto += f"Erro ao listar processos: {str(e)}\n"
+    # Campos opcionais com valores padrão
+    image_base64  = request.data.get('image_base64', None)
+    history       = request.data.get('history', None)
+    use_rag       = request.data.get('use_rag', True)
+    temperature   = request.data.get('temperature', 0.2)
+    system_prompt = request.data.get('system_prompt', None)
 
-    # --- Fazenda e Clientes ---
-    contexto += "\n--- INFORMAÇÕES ESTRUTURAIS ---\n"
-    try:
-        fazenda = Farm.objects.first()
-        if fazenda:
-            contexto += f"Fazenda: {fazenda.name} | Local: {fazenda.location}\n"
-        
-        clientes_count = Cliente.objects.count()
-        contexto += f"Total de Clientes Cadastrados: {clientes_count}\n"
-    except:
-        pass
-    
-    # --- Dispositivos e Infraestrutura ---
-    contexto += "\n--- DISPOSITIVOS E INFRAESTRUTURA ---\n"
-    try:
-        secadores = Secador.objects.all()
-        for sec in secadores:
-            silo_vinculado = sec.lote.silo.name if (hasattr(sec, 'lote') and sec.lote and sec.lote.silo) else 'Nenhum'
-            # Nota: O modelo Secador não tem lote direto no models.py, vou simplificar
-            contexto += f"Secador: {sec.nome} | Modelo: {sec.tipo} | Fonte: {sec.fonte_calor}\n"
-    except:
-        pass
+    # Validação de tipos simples
+    if not isinstance(use_rag, bool):
+        return Response(
+            {"error": "O campo 'use_rag' deve ser um booleano (true/false)."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    if not isinstance(temperature, (int, float)) or not (0.0 <= temperature <= 1.0):
+        return Response(
+            {"error": "O campo 'temperature' deve ser um número entre 0.0 e 1.0."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    if history is not None and not isinstance(history, list):
+        return Response(
+            {"error": "O campo 'history' deve ser uma lista de objetos."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
-    return contexto
+    # Encaminha para o serviço da Foundation AI
+    resultado = send_chat_request(
+        prompt=prompt,
+        image_base64=image_base64,
+        history=history,
+        use_rag=use_rag,
+        temperature=temperature,
+        system_prompt=system_prompt,
+    )
+
+    if resultado['success']:
+        return Response({"response": resultado['response']}, status=status.HTTP_200_OK)
+
+    # Repassa o erro com o status code original da IA
+    error_status = resultado.get('status_code', 500)
+    return Response({"error": resultado['error']}, status=error_status)
