@@ -177,9 +177,10 @@ class Lote(models.Model):
 
 class Secador(models.Model):
     STATUS_CHOICES = (
-        ('Ativo', 'Ativo'),
-        ('Manutenção', 'Manutenção'),
-        ('Inativo', 'Inativo'),
+        ('Disponível', 'Disponível'),
+        ('Em Uso', 'Em Uso'),
+        ('Em Manutenção', 'Em Manutenção'),
+        ('Desativado', 'Desativado'),
     )
     TIPO_CHOICES = (
         ('Coluna', 'Coluna'),
@@ -199,7 +200,7 @@ class Secador(models.Model):
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='Coluna', verbose_name="Tipo")
     capacidade = models.FloatField(verbose_name="Capacidade (t/h)")
     fonte_calor = models.CharField(max_length=20, choices=FONTE_CALOR_CHOICES, default='Lenha', verbose_name="Fonte de Calor")
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Ativo', verbose_name="Status")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Disponível', verbose_name="Status")
     observacoes = models.TextField(blank=True, null=True, verbose_name="Observações")
     
     created_at = models.DateTimeField(auto_now_add=True)
@@ -216,7 +217,8 @@ class Secador(models.Model):
 class Processo(models.Model):
     TIPO_PROCESSO_CHOICES = (
         ('Secagem', 'Secagem'),
-        ('Aeração', 'Aeração'),
+        ('Resfriamento', 'Resfriamento'),
+        ('Armazenamento', 'Armazenamento'),
     )
     
     STATUS_CHOICES = (
@@ -228,6 +230,8 @@ class Processo(models.Model):
 
     tipo_processo = models.CharField(max_length=20, choices=TIPO_PROCESSO_CHOICES, default='Secagem', verbose_name="Tipo de Atividade")
     lote = models.ForeignKey(Lote, on_delete=models.CASCADE, related_name='processos', verbose_name="Lote", null=True, blank=True)
+    secador = models.ForeignKey(Secador, on_delete=models.SET_NULL, null=True, blank=True, related_name='processos', verbose_name="Secador")
+    silo = models.ForeignKey(Silo, on_delete=models.SET_NULL, null=True, blank=True, related_name='processos', verbose_name="Silo")
     
     data_inicio = models.DateTimeField(default=timezone.now, verbose_name="Data de Início")
     data_fim = models.DateTimeField(null=True, blank=True, verbose_name="Data de Fim")

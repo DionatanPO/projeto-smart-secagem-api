@@ -1,13 +1,15 @@
+import json
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from .models import SensorData, User, Silo, Telemetry, Farm, Lote, Secador, Processo, Cliente
 from .serializers import SensorDataSerializer, UserSerializer, SiloSerializer, TelemetrySerializer, FarmSerializer, LoteSerializer, SecadorSerializer, ProcessoSerializer, ClienteSerializer
-from django.db.models import Avg, Max, Min
+from django.db.models import Avg, Max, Min, Q
 from django.utils import timezone
 from datetime import timedelta
 from .services.foundation_ai_service import send_chat_request
+from .services.context_service import get_ai_context
 
 
 class SensorDataViewSet(viewsets.ModelViewSet):
@@ -54,7 +56,7 @@ class TelemetryViewSet(viewsets.ModelViewSet):
         # Lógica especial para aceitar o physical_id do sensor vindo do Gateway
         data = request.data
         physical_id = data.get('sensor_id')
-        
+
         if physical_id:
             try:
                 sensor = SensorData.objects.get(sensor_id=physical_id)
@@ -64,7 +66,7 @@ class TelemetryViewSet(viewsets.ModelViewSet):
                     {"error": f"Sensor com ID físico {physical_id} não encontrado na configuração."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-        
+
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -120,7 +122,7 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     # Apenas administradores podem gerenciar usuários por padrão
     permission_classes = [IsAdminUser]
-    
+
 class ClienteViewSet(viewsets.ModelViewSet):
     queryset = Cliente.objects.all()
     serializer_class = ClienteSerializer
@@ -135,71 +137,48 @@ def logout_view(request):
     return Response({"message": "Logout realizado com sucesso"}, status=status.HTTP_200_OK)
 
 
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def chat_view(request):
     """
     Recebe uma mensagem do Flutter e encaminha para a Foundation AI local.
-
-    Campos de entrada (JSON):
-      - prompt (str, obrigatório)
-      - image_base64 (str, opcional)
-      - history (list, opcional)
-      - use_rag (bool, opcional, padrão True)
-      - temperature (float, opcional, padrão 0.2)
-      - system_prompt (str, opcional)
-
-    Retorno:
-      - 200: { "response": "texto da IA" }
-      - 400: { "error": "mensagem" }  (validação)
-      - 503/504/500: { "error": "mensagem" }  (falha na IA)
     """
     prompt = request.data.get('prompt')
-
-    # Validação do campo obrigatório
     if not prompt:
-        return Response(
-            {"error": "O campo 'prompt' é obrigatório."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response({"error": "O campo 'prompt' é obrigatório."}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Campos opcionais com valores padrão
+    # Campos opcionais
     image_base64  = request.data.get('image_base64', None)
     history       = request.data.get('history', None)
-    use_rag       = request.data.get('use_rag', True)
-    temperature   = request.data.get('temperature', 0.2)
+    use_rag       = request.data.get('use_rag', False)
+    temperature   = request.data.get('temperature', 0.1)
     system_prompt = request.data.get('system_prompt', None)
 
-    # Validação de tipos simples
-    if not isinstance(use_rag, bool):
-        return Response(
-            {"error": "O campo 'use_rag' deve ser um booleano (true/false)."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    if not isinstance(temperature, (int, float)) or not (0.0 <= temperature <= 1.0):
-        return Response(
-            {"error": "O campo 'temperature' deve ser um número entre 0.0 e 1.0."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    if history is not None and not isinstance(history, list):
-        return Response(
-            {"error": "O campo 'history' deve ser uma lista de objetos."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    # Coleta de contexto otimizada
+    context_json = get_ai_context(request.user)
 
-    # Encaminha para o serviço da Foundation AI
+    enhanced_prompt = (
+        f"{prompt}\n\n"
+        f"--- CONTEXTO DO SISTEMA (Dados em tempo real) ---\n"
+        f"Use estas informações para fundamentar sua resposta:\n\n"
+        f"{context_json}"
+    )
+
+    # Se o cliente não enviar um system_prompt, enviamos None para a IA
+    final_system_prompt = system_prompt
+
     resultado = send_chat_request(
-        prompt=prompt,
+        prompt=enhanced_prompt,
         image_base64=image_base64,
         history=history,
         use_rag=use_rag,
         temperature=temperature,
-        system_prompt=system_prompt,
+        system_prompt=final_system_prompt,
     )
 
     if resultado['success']:
         return Response({"response": resultado['response']}, status=status.HTTP_200_OK)
 
-    # Repassa o erro com o status code original da IA
     error_status = resultado.get('status_code', 500)
     return Response({"error": resultado['error']}, status=error_status)

@@ -95,6 +95,8 @@ class ProcessoSerializer(serializers.ModelSerializer):
     lote_numero = serializers.CharField(source='lote.numero_lote', read_only=True)
     lote_cultura = serializers.CharField(source='lote.cultura', read_only=True)
     responsavel_nome = serializers.CharField(source='responsavel.username', read_only=True)
+    secador_nome = serializers.CharField(source='secador.nome', read_only=True, default=None)
+    silo_nome = serializers.CharField(source='silo.name', read_only=True, default=None)
 
     class Meta:
         model = Processo

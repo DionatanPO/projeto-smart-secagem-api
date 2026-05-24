@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import User, SensorData, Telemetry, Farm, Silo, Lote
+from .models import User, SensorData, Telemetry, Farm, Silo, Lote, Secador, Processo, Cliente
 
 class CustomUserAdmin(UserAdmin):
     model = User
@@ -18,8 +18,15 @@ class LoteAdmin(admin.ModelAdmin):
     list_filter = ('status', 'cultura', 'safra')
     search_fields = ('numero_lote', 'cultura')
 
+@admin.register(Processo)
+class ProcessoAdmin(admin.ModelAdmin):
+    list_display = ('tipo_processo', 'lote', 'secador', 'silo', 'status', 'data_inicio')
+    list_filter = ('tipo_processo', 'status')
+
 admin.site.register(User, CustomUserAdmin)
 admin.site.register(SensorData)
 admin.site.register(Telemetry)
 admin.site.register(Farm)
 admin.site.register(Silo)
+admin.site.register(Secador)
+admin.site.register(Cliente)
