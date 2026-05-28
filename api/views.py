@@ -4,7 +4,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from .models import SensorData, User, Silo, Telemetry, Farm, Lote, Secador, Processo, Cliente
-from .serializers import SensorDataSerializer, UserSerializer, SiloSerializer, TelemetrySerializer, FarmSerializer, LoteSerializer, SecadorSerializer, ProcessoSerializer, ClienteSerializer
+from .serializers import SensorDataSerializer, UserSerializer, MeSerializer, SiloSerializer, TelemetrySerializer, FarmSerializer, LoteSerializer, SecadorSerializer, ProcessoSerializer, ClienteSerializer
+from .permissions import IsAdminOrReadOnly, IsAdminOrDeleteOnly, CanManageUsers
 from django.db.models import Avg, Max, Min, Q
 from django.utils import timezone
 from datetime import timedelta
@@ -15,9 +16,13 @@ from .services.context_service import get_ai_context
 class SensorDataViewSet(viewsets.ModelViewSet):
     queryset = SensorData.objects.all()
     serializer_class = SensorDataSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrDeleteOnly]
 
     def get_queryset(self):
-        queryset = SensorData.objects.all()
+        farms = self.request.user.get_accessible_farms()
+        queryset = SensorData.objects.filter(
+            Q(farm__in=farms) | Q(silo__farm__in=farms) | Q(secador__farm__in=farms)
+        ).distinct()
         silo = self.request.query_params.get('silo_id') or self.request.query_params.get('silo')
         if silo:
             queryset = queryset.filter(silo_id=silo)
@@ -26,9 +31,15 @@ class SensorDataViewSet(viewsets.ModelViewSet):
 class TelemetryViewSet(viewsets.ModelViewSet):
     queryset = Telemetry.objects.all()
     serializer_class = TelemetrySerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Telemetry.objects.all()
+        farms = self.request.user.get_accessible_farms()
+        queryset = Telemetry.objects.filter(
+            Q(sensor__farm__in=farms) |
+            Q(sensor__silo__farm__in=farms) |
+            Q(sensor__secador__farm__in=farms)
+        ).distinct()
 
         # Filtrar pelo PK do sensor (id numérico do banco)
         sensor_pk = self.request.query_params.get('sensor')
@@ -75,43 +86,46 @@ class TelemetryViewSet(viewsets.ModelViewSet):
 class SiloViewSet(viewsets.ModelViewSet):
     queryset = Silo.objects.all()
     serializer_class = SiloSerializer
-
-class FarmViewSet(viewsets.ModelViewSet):
-    serializer_class = FarmSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # Cada usuário só vê as suas próprias fazendas
-        return Farm.objects.filter(owner=self.request.user)
+        farms = self.request.user.get_accessible_farms()
+        return Silo.objects.filter(farm__in=farms)
+
+class FarmViewSet(viewsets.ModelViewSet):
+    serializer_class = FarmSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        return self.request.user.get_accessible_farms()
 
     def perform_create(self, serializer):
-        # Atribui o usuário logado como dono da fazenda automaticamente
         serializer.save(owner=self.request.user)
 
 class LoteViewSet(viewsets.ModelViewSet):
     queryset = Lote.objects.all()
     serializer_class = LoteSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminOrDeleteOnly]
 
     def get_queryset(self):
-        # Filtra os lotes das fazendas que pertencem ao usuário logado
-        return Lote.objects.filter(farm__owner=self.request.user)
+        farms = self.request.user.get_accessible_farms()
+        return Lote.objects.filter(farm__in=farms)
 
 class SecadorViewSet(viewsets.ModelViewSet):
     serializer_class = SecadorSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminOrDeleteOnly]
 
     def get_queryset(self):
-        # Filtra os secadores das fazendas que pertencem ao usuário logado
-        return Secador.objects.filter(farm__owner=self.request.user)
+        farms = self.request.user.get_accessible_farms()
+        return Secador.objects.filter(farm__in=farms)
 
 class ProcessoViewSet(viewsets.ModelViewSet):
     serializer_class = ProcessoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminOrDeleteOnly]
 
     def get_queryset(self):
-        # Filtra os processos vinculados às fazendas do usuário logado
-        return Processo.objects.filter(lote__farm__owner=self.request.user)
+        farms = self.request.user.get_accessible_farms()
+        return Processo.objects.filter(lote__farm__in=farms)
 
     def perform_create(self, serializer):
         # Atribui o usuário logado como responsável pelo processo automaticamente
@@ -120,13 +134,52 @@ class ProcessoViewSet(viewsets.ModelViewSet):
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    # Apenas administradores podem gerenciar usuários por padrão
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated, CanManageUsers]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.account_type == 'super_admin':
+            return User.objects.all()
+        if user.account_type == 'admin':
+            my_farms = user.farms.all()
+            return User.objects.filter(
+                farm__in=my_farms, account_type__in=['operador', 'visualizador']
+            ) | User.objects.filter(id=user.id)
+        return User.objects.none()
 
 class ClienteViewSet(viewsets.ModelViewSet):
     queryset = Cliente.objects.all()
     serializer_class = ClienteSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminOrDeleteOnly]
+
+    def get_queryset(self):
+        farms = self.request.user.get_accessible_farms()
+        return Cliente.objects.filter(farm__in=farms)
+
+    def perform_create(self, serializer):
+        farms = self.request.user.get_accessible_farms()
+        farm_id = self.request.data.get('farm')
+        if not farm_id:
+            # Se não enviou, pega a primeira fazenda disponível do usuário
+            farm = farms.first()
+        else:
+            farm = farms.filter(id=farm_id).first()
+        if not farm:
+            raise PermissionError("Você não tem permissão para vincular clientes a esta fazenda.")
+        serializer.save(farm=farm)
+
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def me_view(request):
+    if request.method == 'GET':
+        serializer = MeSerializer(request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    serializer = MeSerializer(request.user, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])

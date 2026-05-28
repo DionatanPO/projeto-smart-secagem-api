@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from django.db.models import Q
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
@@ -18,19 +19,19 @@ def get_ai_context(user):
     """
     Coleta e formata os dados do banco com todas as datas legíveis para a IA.
     """
-    user_farms = Farm.objects.filter(owner=user)
+    user_farms = user.get_accessible_farms()
     
     # Busca dados mantendo objetos para acessar datas
     lotes = Lote.objects.filter(farm__in=user_farms)
-    processos = Processo.objects.filter(lote__farm__owner=user)
+    processos = Processo.objects.filter(lote__farm__in=user_farms)
     farm_objs = list(user_farms)
     silos = Silo.objects.filter(farm__in=user_farms)
     secadores = Secador.objects.filter(farm__in=user_farms)
-    clientes = Cliente.objects.filter(lotes__farm__owner=user).distinct()
+    clientes = Cliente.objects.filter(lotes__farm__in=user_farms).distinct()
     sensores = SensorData.objects.filter(
         Q(farm__in=user_farms) | 
-        Q(silo__in=silos) | 
-        Q(secador__in=secadores)
+        Q(silo__farm__in=user_farms) | 
+        Q(secador__farm__in=user_farms)
     ).distinct()
 
     context_data = {
@@ -66,7 +67,15 @@ def get_ai_context(user):
             {**c, "created_at": format_datetime(c_obj.created_at), "updated_at": format_datetime(c_obj.updated_at)} 
             for c, c_obj in zip(clientes.values('id', 'nome', 'telefone'), clientes)
         ],
-        "sensores": list(sensores.values('id', 'sensor_id', 'tipo', 'status'))
+        "sensores": [
+            {
+                **s,
+                "ultimas_24h": [
+                    {"temp": t.temperatura, "umid": t.umidade, "time": format_datetime(t.timestamp)}
+                    for t in s_obj.telemetries.filter(timestamp__gte=timezone.now() - timedelta(hours=24)).order_by('-timestamp')
+                ]
+            } for s, s_obj in zip(sensores.values('id', 'sensor_id', 'tipo', 'status'), sensores)
+        ]
     }
     
     return json.dumps(context_data, cls=DjangoJSONEncoder, ensure_ascii=False, indent=2)

@@ -4,29 +4,57 @@ from django.utils import timezone
 
 class User(AbstractUser):
     ACCOUNT_TYPES = (
+        ('super_admin', 'Super Administrador'),
         ('admin', 'Administrador'),
         ('operador', 'Operador'),
         ('visualizador', 'Visualizador'),
     )
+
+    HIERARCHY = {
+        'super_admin': 0,
+        'admin': 1,
+        'operador': 2,
+        'visualizador': 3,
+    }
+
     account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPES, default='visualizador', verbose_name="Tipo de Conta")
+    telefone = models.CharField(max_length=20, blank=True, null=True, verbose_name="Telefone")
+    farm = models.ForeignKey('Farm', on_delete=models.SET_NULL, null=True, blank=True, related_name='operadores', verbose_name="Fazenda Vinculada")
 
     def __str__(self):
         return f"{self.username} ({self.get_account_type_display()})"
 
-    def save(self, *args, **kwargs):
-        # Lógica automática: se for admin, vira superusuário e staff
+    def get_accessible_farms(self):
+        if self.account_type == 'super_admin':
+            return Farm.objects.all()
+        if self.account_type == 'operador' and self.farm:
+            return Farm.objects.filter(id=self.farm.id)
         if self.account_type == 'admin':
+            return self.farms.all()
+        return Farm.objects.none()
+
+    def can_manage_type(self, target_type):
+        my_level = self.HIERARCHY.get(self.account_type, 99)
+        target_level = self.HIERARCHY.get(target_type, 99)
+        return my_level < target_level
+
+    def can_manage_user(self, target_user):
+        return self.can_manage_type(target_user.account_type)
+
+    def save(self, *args, **kwargs):
+        if self.account_type == 'super_admin':
             self.is_staff = True
             self.is_superuser = True
-        # Se for operador, ganha acesso de staff (para usar o painel/API), mas não é superusuário
+        elif self.account_type == 'admin':
+            self.is_staff = True
+            self.is_superuser = False
         elif self.account_type == 'operador':
             self.is_staff = True
             self.is_superuser = False
-        # Outros (visualizador, etc), não têm acesso de admin
         else:
             self.is_staff = False
             self.is_superuser = False
-            
+
         super().save(*args, **kwargs)
 
 class SensorData(models.Model):
@@ -276,6 +304,7 @@ class Processo(models.Model):
             self.lote.save()
 
 class Cliente(models.Model):
+    farm = models.ForeignKey(Farm, on_delete=models.CASCADE, related_name='clientes', verbose_name="Fazenda", null=True, blank=True)
     nome = models.CharField(max_length=200, verbose_name="Nome Completo")
     email = models.EmailField(max_length=200, blank=True, null=True, verbose_name="E-mail")
     telefone = models.CharField(max_length=20, blank=True, null=True, verbose_name="Telefone")

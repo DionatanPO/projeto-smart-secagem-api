@@ -30,7 +30,7 @@ class SiloSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'password', 'account_type', 'is_staff']
+        fields = ['id', 'username', 'email', 'password', 'account_type', 'is_staff', 'first_name', 'last_name', 'telefone', 'farm']
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
@@ -42,6 +42,19 @@ class UserSerializer(serializers.ModelSerializer):
             password = validated_data.pop('password')
             instance.set_password(password)
         return super().update(instance, validated_data)
+
+    def update(self, instance, validated_data):
+        if 'password' in validated_data:
+            password = validated_data.pop('password')
+            instance.set_password(password)
+        return super().update(instance, validated_data)
+
+
+class MeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'telefone', 'account_type']
+        read_only_fields = ['id', 'username', 'account_type']
 
 class LoteSerializer(serializers.ModelSerializer):
     farm_name = serializers.CharField(source='farm.name', read_only=True)
@@ -104,6 +117,13 @@ class ProcessoSerializer(serializers.ModelSerializer):
 
 
 class ClienteSerializer(serializers.ModelSerializer):
+    farm_name = serializers.CharField(source='farm.name', read_only=True)
+
     class Meta:
         model = Cliente
         fields = '__all__'
+
+    def validate_farm(self, value):
+        if not value:
+            raise serializers.ValidationError("Cliente deve estar vinculado a uma fazenda.")
+        return value

@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework.authtoken.views import obtain_auth_token
-from .views import SensorDataViewSet, UserViewSet, logout_view, SiloViewSet, TelemetryViewSet, FarmViewSet, LoteViewSet, SecadorViewSet, ProcessoViewSet, ClienteViewSet, chat_view
+from .views import SensorDataViewSet, UserViewSet, logout_view, me_view, SiloViewSet, TelemetryViewSet, FarmViewSet, LoteViewSet, SecadorViewSet, ProcessoViewSet, ClienteViewSet, chat_view
 
 router = DefaultRouter()
 router.register(r'sensores', SensorDataViewSet)
@@ -19,4 +19,5 @@ urlpatterns = [
     path('login/', obtain_auth_token, name='api_token_auth'),
     path('logout/', logout_view, name='api_logout'),
     path('chat/', chat_view, name='chat'),
+    path('me/', me_view, name='me'),
 ]
