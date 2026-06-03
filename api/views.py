@@ -3,12 +3,13 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
-from .models import SensorData, User, Silo, Telemetry, Farm, Lote, Secador, Processo, Cliente
-from .serializers import SensorDataSerializer, UserSerializer, MeSerializer, SiloSerializer, TelemetrySerializer, FarmSerializer, LoteSerializer, SecadorSerializer, ProcessoSerializer, ClienteSerializer
+from .models import SensorData, User, Silo, Telemetry, UnidadeArmazenadora, Lote, Secador, Processo, Cliente
+from .serializers import SensorDataSerializer, UserSerializer, MeSerializer, SiloSerializer, TelemetrySerializer, UnidadeArmazenadoraSerializer, LoteSerializer, SecadorSerializer, ProcessoSerializer, ClienteSerializer
 from .permissions import IsAdminOrReadOnly, IsAdminOrDeleteOnly, CanManageUsers
 from django.db.models import Avg, Max, Min, Q
 from django.utils import timezone
 from datetime import timedelta
+from decimal import Decimal
 from .services.foundation_ai_service import send_chat_request
 from .services.context_service import get_ai_context
 
@@ -19,13 +20,16 @@ class SensorDataViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdminOrDeleteOnly]
 
     def get_queryset(self):
-        farms = self.request.user.get_accessible_farms()
+        unidades = self.request.user.get_accessible_unidades()
         queryset = SensorData.objects.filter(
-            Q(farm__in=farms) | Q(silo__farm__in=farms) | Q(secador__farm__in=farms)
+            Q(unidade_armazenadora__in=unidades) | Q(silo__unidade_armazenadora__in=unidades) | Q(secador__unidade_armazenadora__in=unidades)
         ).distinct()
         silo = self.request.query_params.get('silo_id') or self.request.query_params.get('silo')
         if silo:
             queryset = queryset.filter(silo_id=silo)
+        secador = self.request.query_params.get('secador')
+        if secador:
+            queryset = queryset.filter(secador_id=secador)
         return queryset
 
 class TelemetryViewSet(viewsets.ModelViewSet):
@@ -34,11 +38,11 @@ class TelemetryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        farms = self.request.user.get_accessible_farms()
+        unidades = self.request.user.get_accessible_unidades()
         queryset = Telemetry.objects.filter(
-            Q(sensor__farm__in=farms) |
-            Q(sensor__silo__farm__in=farms) |
-            Q(sensor__secador__farm__in=farms)
+            Q(sensor__unidade_armazenadora__in=unidades) |
+            Q(sensor__silo__unidade_armazenadora__in=unidades) |
+            Q(sensor__secador__unidade_armazenadora__in=unidades)
         ).distinct()
 
         # Filtrar pelo PK do sensor (id numérico do banco)
@@ -89,15 +93,15 @@ class SiloViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        farms = self.request.user.get_accessible_farms()
-        return Silo.objects.filter(farm__in=farms)
+        unidades = self.request.user.get_accessible_unidades()
+        return Silo.objects.filter(unidade_armazenadora__in=unidades)
 
-class FarmViewSet(viewsets.ModelViewSet):
-    serializer_class = FarmSerializer
+class UnidadeArmazenadoraViewSet(viewsets.ModelViewSet):
+    serializer_class = UnidadeArmazenadoraSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
 
     def get_queryset(self):
-        return self.request.user.get_accessible_farms()
+        return self.request.user.get_accessible_unidades()
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
@@ -108,24 +112,24 @@ class LoteViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdminOrDeleteOnly]
 
     def get_queryset(self):
-        farms = self.request.user.get_accessible_farms()
-        return Lote.objects.filter(farm__in=farms)
+        unidades = self.request.user.get_accessible_unidades()
+        return Lote.objects.filter(unidade_armazenadora__in=unidades)
 
 class SecadorViewSet(viewsets.ModelViewSet):
     serializer_class = SecadorSerializer
     permission_classes = [IsAuthenticated, IsAdminOrDeleteOnly]
 
     def get_queryset(self):
-        farms = self.request.user.get_accessible_farms()
-        return Secador.objects.filter(farm__in=farms)
+        unidades = self.request.user.get_accessible_unidades()
+        return Secador.objects.filter(unidade_armazenadora__in=unidades)
 
 class ProcessoViewSet(viewsets.ModelViewSet):
     serializer_class = ProcessoSerializer
     permission_classes = [IsAuthenticated, IsAdminOrDeleteOnly]
 
     def get_queryset(self):
-        farms = self.request.user.get_accessible_farms()
-        return Processo.objects.filter(lote__farm__in=farms)
+        unidades = self.request.user.get_accessible_unidades()
+        return Processo.objects.filter(lote__unidade_armazenadora__in=unidades)
 
     def perform_create(self, serializer):
         # Atribui o usuário logado como responsável pelo processo automaticamente
@@ -141,9 +145,9 @@ class UserViewSet(viewsets.ModelViewSet):
         if user.account_type == 'super_admin':
             return User.objects.all()
         if user.account_type == 'admin':
-            my_farms = user.farms.all()
+            my_unidades = user.unidades_armazenadoras.all()
             return User.objects.filter(
-                farm__in=my_farms, account_type__in=['operador', 'visualizador']
+                unidade_armazenadora__in=my_unidades, account_type__in=['operador', 'visualizador']
             ) | User.objects.filter(id=user.id)
         return User.objects.none()
 
@@ -153,20 +157,19 @@ class ClienteViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdminOrDeleteOnly]
 
     def get_queryset(self):
-        farms = self.request.user.get_accessible_farms()
-        return Cliente.objects.filter(farm__in=farms)
+        unidades = self.request.user.get_accessible_unidades()
+        return Cliente.objects.filter(unidade_armazenadora__in=unidades)
 
     def perform_create(self, serializer):
-        farms = self.request.user.get_accessible_farms()
-        farm_id = self.request.data.get('farm')
-        if not farm_id:
-            # Se não enviou, pega a primeira fazenda disponível do usuário
-            farm = farms.first()
+        unidades = self.request.user.get_accessible_unidades()
+        unidade_id = self.request.data.get('unidade_armazenadora')
+        if not unidade_id:
+            unidade = unidades.first()
         else:
-            farm = farms.filter(id=farm_id).first()
-        if not farm:
-            raise PermissionError("Você não tem permissão para vincular clientes a esta fazenda.")
-        serializer.save(farm=farm)
+            unidade = unidades.filter(id=unidade_id).first()
+        if not unidade:
+            raise PermissionError("Você não tem permissão para vincular clientes a esta unidade armazenadora.")
+        serializer.save(unidade_armazenadora=unidade)
 
 
 @api_view(['GET', 'PATCH'])
@@ -189,6 +192,104 @@ def logout_view(request):
     request.user.auth_token.delete()
     return Response({"message": "Logout realizado com sucesso"}, status=status.HTTP_200_OK)
 
+
+
+def _calcular_custos_processo(processo):
+    """Calcula custos de um processo de secagem."""
+    if not processo.data_fim or not processo.data_inicio:
+        return None
+
+    duracao = processo.data_fim - processo.data_inicio
+    duracao_horas = duracao.total_seconds() / 3600
+    duracao_dias = duracao_horas / 24
+    secador = processo.secador
+
+    custo_combustivel = 0.0
+    custo_energia = 0.0
+    custo_mao_obra = 0.0
+    custo_manutencao = 0.0
+    custo_depreciacao = 0.0
+
+    if secador:
+        if secador.consumo_combustivel_hora and secador.preco_combustivel:
+            custo_combustivel = float(secador.consumo_combustivel_hora * float(secador.preco_combustivel) * duracao_horas)
+        if secador.consumo_energia_kwh and secador.preco_kwh:
+            custo_energia = float(secador.consumo_energia_kwh * float(secador.preco_kwh) * duracao_horas)
+        if secador.custo_mao_obra_hora:
+            custo_mao_obra = float(secador.custo_mao_obra_hora) * duracao_horas
+        if secador.custo_manutencao_anual:
+            custo_manutencao = float(secador.custo_manutencao_anual) / 365 * duracao_dias
+        if secador.custo_aquisicao and secador.valor_residual and secador.vida_util_anos:
+            custo_depreciacao = (float(secador.custo_aquisicao) - float(secador.valor_residual)) / secador.vida_util_anos / 365 * duracao_dias
+
+    custo_total = custo_combustivel + custo_energia + custo_mao_obra + custo_manutencao + custo_depreciacao
+
+    lote = processo.lote
+    agua_removida_kg = None
+    if lote and lote.peso_final and lote.peso_inicial:
+        agua_removida_kg = lote.peso_inicial - lote.peso_final
+
+    custo_por_ton_agua = None
+    if agua_removida_kg and agua_removida_kg > 0 and custo_total > 0:
+        custo_por_ton_agua = custo_total / (agua_removida_kg / 1000)
+
+    return {
+        'processo_id': processo.id,
+        'tipo_processo': processo.tipo_processo,
+        'status': processo.status,
+        'data_inicio': processo.data_inicio,
+        'data_fim': processo.data_fim,
+        'duracao_horas': round(duracao_horas, 2),
+        'lote_id': lote.id if lote else None,
+        'lote_numero': lote.numero_lote if lote else None,
+        'lote_cultura': lote.cultura if lote else None,
+        'lote_peso_inicial': lote.peso_inicial if lote else None,
+        'lote_peso_final': lote.peso_final if lote else None,
+        'secador_id': secador.id if secador else None,
+        'secador_nome': secador.nome if secador else None,
+        'secador_fonte_calor': secador.fonte_calor if secador else None,
+        'custo_combustivel': round(custo_combustivel, 2),
+        'custo_energia': round(custo_energia, 2),
+        'custo_mao_obra': round(custo_mao_obra, 2),
+        'custo_manutencao': round(custo_manutencao, 2),
+        'custo_depreciacao': round(custo_depreciacao, 2),
+        'custo_total': round(custo_total, 2),
+        'custo_por_hora': round(custo_total / duracao_horas, 2) if duracao_horas > 0 else 0,
+        'custo_por_ton_agua': round(custo_por_ton_agua, 2) if custo_por_ton_agua else None,
+        'agua_removida_kg': round(agua_removida_kg, 2) if agua_removida_kg else None,
+    }
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def custos_secagem_view(request):
+    """Retorna custos calculados para todos os processos de secagem finalizados."""
+    unidades = request.user.get_accessible_unidades()
+    processos = Processo.objects.filter(
+        tipo_processo='Secagem',
+        lote__unidade_armazenadora__in=unidades,
+        data_fim__isnull=False,
+    ).select_related('lote', 'secador').order_by('-data_fim')
+
+    secador_id = request.query_params.get('secador')
+    if secador_id:
+        processos = processos.filter(secador_id=secador_id)
+
+    data_inicio = request.query_params.get('data_inicio')
+    if data_inicio:
+        processos = processos.filter(data_inicio__gte=data_inicio)
+
+    data_fim = request.query_params.get('data_fim')
+    if data_fim:
+        processos = processos.filter(data_inicio__lte=data_fim)
+
+    results = []
+    for p in processos:
+        cost_data = _calcular_custos_processo(p)
+        if cost_data:
+            results.append(cost_data)
+
+    return Response(results)
 
 
 @api_view(['POST'])

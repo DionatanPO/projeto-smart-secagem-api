@@ -19,19 +19,19 @@ class User(AbstractUser):
 
     account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPES, default='visualizador', verbose_name="Tipo de Conta")
     telefone = models.CharField(max_length=20, blank=True, null=True, verbose_name="Telefone")
-    farm = models.ForeignKey('Farm', on_delete=models.SET_NULL, null=True, blank=True, related_name='operadores', verbose_name="Fazenda Vinculada")
+    unidade_armazenadora = models.ForeignKey('UnidadeArmazenadora', on_delete=models.SET_NULL, null=True, blank=True, related_name='operadores', verbose_name="Unidade Armazenadora Vinculada")
 
     def __str__(self):
         return f"{self.username} ({self.get_account_type_display()})"
 
-    def get_accessible_farms(self):
+    def get_accessible_unidades(self):
         if self.account_type == 'super_admin':
-            return Farm.objects.all()
-        if self.account_type == 'operador' and self.farm:
-            return Farm.objects.filter(id=self.farm.id)
+            return UnidadeArmazenadora.objects.all()
+        if self.account_type == 'operador' and self.unidade_armazenadora:
+            return UnidadeArmazenadora.objects.filter(id=self.unidade_armazenadora.id)
         if self.account_type == 'admin':
-            return self.farms.all()
-        return Farm.objects.none()
+            return self.unidades_armazenadoras.all()
+        return UnidadeArmazenadora.objects.none()
 
     def can_manage_type(self, target_type):
         my_level = self.HIERARCHY.get(self.account_type, 99)
@@ -69,7 +69,7 @@ class SensorData(models.Model):
     
     silo = models.ForeignKey('Silo', on_delete=models.CASCADE, related_name='sensors', null=True, blank=True)
     secador = models.ForeignKey('Secador', on_delete=models.CASCADE, related_name='sensors', null=True, blank=True)
-    farm = models.ForeignKey('Farm', on_delete=models.CASCADE, related_name='sensors', null=True, blank=True)
+    unidade_armazenadora = models.ForeignKey('UnidadeArmazenadora', on_delete=models.CASCADE, related_name='sensors', null=True, blank=True)
     
     description = models.CharField(max_length=100, blank=True, verbose_name="Descrição/Localização")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ativo', verbose_name="Status de Operação")
@@ -97,17 +97,17 @@ class Telemetry(models.Model):
     def __str__(self):
         return f"{self.sensor.sensor_id} | {self.temperatura}°C | {self.timestamp}"
 
-class Farm(models.Model):
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='farms', verbose_name="Dono/Usuário")
-    name = models.CharField(max_length=100, verbose_name="Nome da Fazenda/Armazém")
+class UnidadeArmazenadora(models.Model):
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='unidades_armazenadoras', verbose_name="Dono/Usuário")
+    name = models.CharField(max_length=100, verbose_name="Nome da Unidade Armazenadora")
     location = models.CharField(max_length=200, blank=True, null=True, verbose_name="Localização/Cidade")
     description = models.TextField(blank=True, null=True, verbose_name="Observações da Unidade")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
 
     class Meta:
         ordering = ['name']
-        verbose_name = 'Fazenda/Armazém'
-        verbose_name_plural = 'Fazendas/Armazéns'
+        verbose_name = 'Unidade Armazenadora'
+        verbose_name_plural = 'Unidades Armazenadoras'
 
     def __str__(self):
         return self.name
@@ -119,9 +119,14 @@ class Silo(models.Model):
         ('manutencao', 'Manutenção'),
         ('desativado', 'Desativado'),
     )
+    TIPO_CHOICES = (
+        ('pulmao', 'Silo Pulmão'),
+        ('armazenamento', 'Silo de Armazenamento'),
+    )
     
     name = models.CharField(max_length=100, verbose_name="Nome do Silo")
-    farm = models.ForeignKey(Farm, on_delete=models.CASCADE, related_name='silos', null=True, blank=True, verbose_name="Fazenda/Armazém")
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='pulmao', verbose_name="Tipo do Silo")
+    unidade_armazenadora = models.ForeignKey(UnidadeArmazenadora, on_delete=models.CASCADE, related_name='silos', null=True, blank=True, verbose_name="Unidade Armazenadora")
     capacity = models.FloatField(verbose_name="Capacidade Máxima (Toneladas)")
     current_quantity = models.FloatField(default=0, verbose_name="Quantidade Atual (Toneladas)")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='disponivel', verbose_name="Status")
@@ -154,7 +159,7 @@ class Lote(models.Model):
     )
 
     numero_lote = models.CharField(max_length=50, unique=True, blank=True, verbose_name="Número do Lote")
-    farm = models.ForeignKey(Farm, on_delete=models.CASCADE, related_name='lotes', verbose_name="Fazenda/Unidade")
+    unidade_armazenadora = models.ForeignKey(UnidadeArmazenadora, on_delete=models.CASCADE, related_name='lotes', verbose_name="Unidade Armazenadora")
     cliente = models.ForeignKey('Cliente', on_delete=models.PROTECT, related_name='lotes', verbose_name="Cliente/Produtor", null=True)
     cultura = models.CharField(max_length=100, verbose_name="Cultura (ex: Milho, Soja)")
     variedade = models.CharField(max_length=100, blank=True, null=True, verbose_name="Variedade")
@@ -174,6 +179,9 @@ class Lote(models.Model):
     silo = models.ForeignKey(Silo, on_delete=models.SET_NULL, null=True, blank=True, related_name='lotes', verbose_name="Silo de Destino")
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='aguardando', verbose_name="Status")
     observacoes = models.TextField(blank=True, null=True, verbose_name="Observações")
+    placa_caminhao = models.CharField(max_length=20, blank=True, null=True, verbose_name="Placa do Caminhão")
+    motorista_nome = models.CharField(max_length=100, blank=True, null=True, verbose_name="Nome do Motorista")
+    peso_caminhao = models.FloatField(null=True, blank=True, verbose_name="Peso do Caminhão (kg)")
 
     class Meta:
         ordering = ['-data_entrada']
@@ -224,13 +232,27 @@ class Secador(models.Model):
     )
 
     nome = models.CharField(max_length=100, verbose_name="Nome do Secador")
-    farm = models.ForeignKey(Farm, on_delete=models.CASCADE, related_name='secadores', verbose_name="Fazenda/Unidade")
+    unidade_armazenadora = models.ForeignKey(UnidadeArmazenadora, on_delete=models.CASCADE, related_name='secadores', verbose_name="Unidade Armazenadora")
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='Coluna', verbose_name="Tipo")
     capacidade = models.FloatField(verbose_name="Capacidade (t/h)")
     fonte_calor = models.CharField(max_length=20, choices=FONTE_CALOR_CHOICES, default='Lenha', verbose_name="Fonte de Calor")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Disponível', verbose_name="Status")
     observacoes = models.TextField(blank=True, null=True, verbose_name="Observações")
-    
+
+    # Custos de Capital
+    custo_aquisicao = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True, verbose_name="Custo de Aquisição (R$)")
+    valor_residual = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True, verbose_name="Valor Residual (R$)")
+    vida_util_anos = models.IntegerField(blank=True, null=True, verbose_name="Vida Útil (anos)")
+
+    # Custos Operacionais
+    custo_instalacao = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True, verbose_name="Custo de Instalação (R$)")
+    custo_manutencao_anual = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True, verbose_name="Custo de Manutenção Anual (R$)")
+    consumo_combustivel_hora = models.FloatField(blank=True, null=True, verbose_name="Consumo de Combustível (L/h ou kg/h)")
+    preco_combustivel = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name="Preço do Combustível (R$/un)")
+    consumo_energia_kwh = models.FloatField(blank=True, null=True, verbose_name="Consumo de Energia (kWh)")
+    preco_kwh = models.DecimalField(max_digits=8, decimal_places=4, blank=True, null=True, verbose_name="Preço da Energia (R$/kWh)")
+    custo_mao_obra_hora = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name="Custo de Mão de Obra (R$/h)")
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -240,10 +262,11 @@ class Secador(models.Model):
         verbose_name_plural = 'Secadores'
 
     def __str__(self):
-        return f"{self.nome} - {self.farm.name}"
+        return f"{self.nome} - {self.unidade_armazenadora.name}"
 
 class Processo(models.Model):
     TIPO_PROCESSO_CHOICES = (
+        ('Triagem', 'Triagem'),
         ('Secagem', 'Secagem'),
         ('Resfriamento', 'Resfriamento'),
         ('Armazenamento', 'Armazenamento'),
@@ -266,6 +289,7 @@ class Processo(models.Model):
     
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Iniciada', verbose_name="Status")
     responsavel = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Operador Responsável")
+    dados_extras = models.JSONField(default=dict, blank=True, verbose_name="Dados Extras")
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -304,7 +328,7 @@ class Processo(models.Model):
             self.lote.save()
 
 class Cliente(models.Model):
-    farm = models.ForeignKey(Farm, on_delete=models.CASCADE, related_name='clientes', verbose_name="Fazenda", null=True, blank=True)
+    unidade_armazenadora = models.ForeignKey(UnidadeArmazenadora, on_delete=models.CASCADE, related_name='clientes', verbose_name="Unidade Armazenadora", null=True, blank=True)
     nome = models.CharField(max_length=200, verbose_name="Nome Completo")
     email = models.EmailField(max_length=200, blank=True, null=True, verbose_name="E-mail")
     telefone = models.CharField(max_length=20, blank=True, null=True, verbose_name="Telefone")

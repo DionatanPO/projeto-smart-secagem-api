@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.db.models import Q
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
-from api.models import Farm, Silo, Lote, Secador, Processo, Cliente, SensorData
+from api.models import UnidadeArmazenadora, Silo, Lote, Secador, Processo, Cliente, SensorData
 
 def format_datetime(dt):
     """Formata datas para o formato legível em BR."""
@@ -19,29 +19,29 @@ def get_ai_context(user):
     """
     Coleta e formata os dados do banco com todas as datas legíveis para a IA.
     """
-    user_farms = user.get_accessible_farms()
+    user_unidades = user.get_accessible_unidades()
     
     # Busca dados mantendo objetos para acessar datas
-    lotes = Lote.objects.filter(farm__in=user_farms)
-    processos = Processo.objects.filter(lote__farm__in=user_farms)
-    farm_objs = list(user_farms)
-    silos = Silo.objects.filter(farm__in=user_farms)
-    secadores = Secador.objects.filter(farm__in=user_farms)
-    clientes = Cliente.objects.filter(lotes__farm__in=user_farms).distinct()
+    lotes = Lote.objects.filter(unidade_armazenadora__in=user_unidades)
+    processos = Processo.objects.filter(lote__unidade_armazenadora__in=user_unidades)
+    unidade_objs = list(user_unidades)
+    silos = Silo.objects.filter(unidade_armazenadora__in=user_unidades)
+    secadores = Secador.objects.filter(unidade_armazenadora__in=user_unidades)
+    clientes = Cliente.objects.filter(lotes__unidade_armazenadora__in=user_unidades).distinct()
     sensores = SensorData.objects.filter(
-        Q(farm__in=user_farms) | 
-        Q(silo__farm__in=user_farms) | 
-        Q(secador__farm__in=user_farms)
+        Q(unidade_armazenadora__in=user_unidades) | 
+        Q(silo__unidade_armazenadora__in=user_unidades) | 
+        Q(secador__unidade_armazenadora__in=user_unidades)
     ).distinct()
 
     context_data = {
-        "fazendas": [
-            {**f, "created_at": format_datetime(f_obj.created_at)} 
-            for f, f_obj in zip(user_farms.values('id', 'name', 'location'), farm_objs)
+        "unidades_armazenadoras": [
+            {**u, "created_at": format_datetime(u_obj.created_at)} 
+            for u, u_obj in zip(user_unidades.values('id', 'name', 'location'), unidade_objs)
         ],
         "silos": [
             {**s, "created_at": format_datetime(s_obj.created_at), "updated_at": format_datetime(s_obj.updated_at)} 
-            for s, s_obj in zip(silos.values('id', 'name', 'farm_id', 'capacity', 'current_quantity', 'status'), silos)
+            for s, s_obj in zip(silos.values('id', 'name', 'unidade_armazenadora_id', 'capacity', 'current_quantity', 'status'), silos)
         ],
         "lotes": [
             {

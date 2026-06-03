@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import SensorData, User, Silo, Telemetry, Farm, Lote, Secador, Processo, Cliente
+from .models import SensorData, User, Silo, Telemetry, UnidadeArmazenadora, Lote, Secador, Processo, Cliente
 
 class SensorDataSerializer(serializers.ModelSerializer):
     class Meta:
@@ -14,14 +14,14 @@ class TelemetrySerializer(serializers.ModelSerializer):
         model = Telemetry
         fields = ['id', 'sensor', 'sensor_physical_id', 'temperatura', 'umidade', 'timestamp', 'received_at']
 
-class FarmSerializer(serializers.ModelSerializer):
+class UnidadeArmazenadoraSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Farm
+        model = UnidadeArmazenadora
         fields = '__all__'
         read_only_fields = ['owner']
 
 class SiloSerializer(serializers.ModelSerializer):
-    farm_name = serializers.CharField(source='farm.name', read_only=True)
+    unidade_armazenadora_nome = serializers.CharField(source='unidade_armazenadora.name', read_only=True)
     
     class Meta:
         model = Silo
@@ -30,7 +30,7 @@ class SiloSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'password', 'account_type', 'is_staff', 'first_name', 'last_name', 'telefone', 'farm']
+        fields = ['id', 'username', 'email', 'password', 'account_type', 'is_staff', 'first_name', 'last_name', 'telefone', 'unidade_armazenadora']
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
@@ -57,7 +57,7 @@ class MeSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'username', 'account_type']
 
 class LoteSerializer(serializers.ModelSerializer):
-    farm_name = serializers.CharField(source='farm.name', read_only=True)
+    unidade_armazenadora_nome = serializers.CharField(source='unidade_armazenadora.name', read_only=True)
     silo_name = serializers.CharField(source='silo.name', read_only=True)
     cliente_nome = serializers.CharField(source='cliente.nome', read_only=True)
 
@@ -98,7 +98,7 @@ class LoteSerializer(serializers.ModelSerializer):
         return data
 
 class SecadorSerializer(serializers.ModelSerializer):
-    farm_name = serializers.CharField(source='farm.name', read_only=True)
+    unidade_armazenadora_nome = serializers.CharField(source='unidade_armazenadora.name', read_only=True)
 
     class Meta:
         model = Secador
@@ -117,13 +117,13 @@ class ProcessoSerializer(serializers.ModelSerializer):
 
 
 class ClienteSerializer(serializers.ModelSerializer):
-    farm_name = serializers.CharField(source='farm.name', read_only=True)
+    unidade_armazenadora_nome = serializers.CharField(source='unidade_armazenadora.name', read_only=True)
 
     class Meta:
         model = Cliente
         fields = '__all__'
 
-    def validate_farm(self, value):
+    def validate_unidade_armazenadora(self, value):
         if not value:
-            raise serializers.ValidationError("Cliente deve estar vinculado a uma fazenda.")
+            raise serializers.ValidationError("Cliente deve estar vinculado a uma unidade armazenadora.")
         return value
