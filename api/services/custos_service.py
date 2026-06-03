@@ -1,6 +1,3 @@
-from decimal import Decimal
-
-
 def calcular_custos_processo(processo):
     """Calcula custos de um processo de secagem finalizado."""
     if not processo.data_fim or not processo.data_inicio:

@@ -26,7 +26,7 @@ def dias_desde(dt):
 def get_ai_context(user):
     user_unidades = user.get_accessible_unidades()
 
-    lotes = Lote.objects.filter(unidade_armazenadora__in=user_unidades)
+    lotes = Lote.objects.filter(unidade_armazenadora__in=user_unidades).select_related('cliente')
     processos = Processo.objects.filter(lote__unidade_armazenadora__in=user_unidades).select_related('lote', 'secador', 'silo')
     secadores = Secador.objects.filter(unidade_armazenadora__in=user_unidades)
     silos = Silo.objects.filter(unidade_armazenadora__in=user_unidades)
@@ -77,7 +77,7 @@ def get_ai_context(user):
     # ── RESUMO OPERACIONAL ───────────────────────────────────
     now = timezone.now()
     processos_ativos = [p for p in processos if p.status in ('Iniciada', 'Pausada')]
-    secadores_disponiveis = [s for s in secadores if s.status == 'Disponivel']
+    secadores_disponiveis = [s for s in secadores if s.status == 'Disponível']
     lotes_ativos = [l for l in lotes if l.status not in ('despachado', 'finalizado')]
     total_grao_armazenado = sum(s.current_quantity for s in silos if s.current_quantity)
 
@@ -87,7 +87,7 @@ def get_ai_context(user):
         'processos_finalizados_hoje': len([p for p in processos if p.data_fim and p.data_fim.date() == now.date()]),
         'lotes_em_andamento': len(lotes_ativos),
         'secadores_disponiveis': len(secadores_disponiveis),
-        'secadores_em_manutencao': len([s for s in secadores if s.status == 'Em Manutencao']),
+        'secadores_em_manutencao': len([s for s in secadores if s.status == 'Em Manutenção']),
         'silos_disponiveis': len([s for s in silos if s.status == 'disponivel']),
         'grao_armazenado_total_kg': round(total_grao_armazenado, 0) if total_grao_armazenado else 0,
         'sensores_ativos': len([s for s in sensores if s.status == 'ativo']),
@@ -106,7 +106,7 @@ def get_ai_context(user):
 
     # Secadores em manutencao
     for s in secadores:
-        if s.status == 'Em Manutencao':
+        if s.status == 'Em Manutenção':
             alertas.append(f'Secador {s.nome} esta em manutencao')
 
     # Silos cheios (>95%)
@@ -147,19 +147,43 @@ def get_ai_context(user):
         secadores_dados.append(item)
 
     # ── CUSTOS SECAGEM (já calculados) ───────────────────────
-    custos_processos = [
-        c for p in processos
-        if p.tipo_processo == 'Secagem' and p.data_fim and (c := calcular_custos_processo(p))
-    ]
+    custos_processos_lista = []
+    total_combustivel = total_energia = total_mao_obra = total_manutencao = total_depreciacao = total_geral = 0.0
+    for p in processos:
+        if p.tipo_processo != 'Secagem' or not p.data_fim:
+            continue
+        c = calcular_custos_processo(p)
+        if not c:
+            continue
+        custos_processos_lista.append({
+            'lote': p.lote.numero_lote if p.lote else None,
+            'cultura': p.lote.cultura if p.lote else None,
+            'secador': p.secador.nome if p.secador else None,
+            'duracao_h': c['duracao_horas'],
+            'custo_combustivel': c['custo_combustivel'],
+            'custo_energia': c['custo_energia'],
+            'custo_mao_obra': c['custo_mao_obra'],
+            'custo_manutencao': c['custo_manutencao'],
+            'custo_depreciacao': c['custo_depreciacao'],
+            'custo_total': c['custo_total'],
+            'custo_por_hora': c['custo_por_hora'],
+        })
+        total_combustivel += c['custo_combustivel']
+        total_energia += c['custo_energia']
+        total_mao_obra += c['custo_mao_obra']
+        total_manutencao += c['custo_manutencao']
+        total_depreciacao += c['custo_depreciacao']
+        total_geral += c['custo_total']
+
     totalizador = None
-    if custos_processos:
+    if custos_processos_lista:
         totalizador = {
-            'total_combustivel': round(sum(t['custo_combustivel'] for t in custos_processos), 2),
-            'total_energia': round(sum(t['custo_energia'] for t in custos_processos), 2),
-            'total_mao_obra': round(sum(t['custo_mao_obra'] for t in custos_processos), 2),
-            'total_manutencao': round(sum(t['custo_manutencao'] for t in custos_processos), 2),
-            'total_depreciacao': round(sum(t['custo_depreciacao'] for t in custos_processos), 2),
-            'total_geral': round(sum(t['custo_total'] for t in custos_processos), 2),
+            'total_combustivel': round(total_combustivel, 2),
+            'total_energia': round(total_energia, 2),
+            'total_mao_obra': round(total_mao_obra, 2),
+            'total_manutencao': round(total_manutencao, 2),
+            'total_depreciacao': round(total_depreciacao, 2),
+            'total_geral': round(total_geral, 2),
         }
 
     # ── SILOS ────────────────────────────────────────────────
@@ -224,18 +248,7 @@ def get_ai_context(user):
             for c in clientes
         ],
         'custos_secagem': {
-            'processos': [
-                {
-                    'lote': c.get('lote_numero'),
-                    'cultura': c.get('lote_cultura'),
-                    'secador': c.get('secador_nome'),
-                    'duracao_h': c['duracao_horas'],
-                    **{k: c[k] for k in ('custo_combustivel', 'custo_energia', 'custo_mao_obra',
-                                         'custo_manutencao', 'custo_depreciacao', 'custo_total',
-                                         'custo_por_hora', 'custo_por_ton_agua') if k in c}
-                }
-                for c in custos_processos
-            ],
+            'processos': custos_processos_lista,
             'totalizador': totalizador,
         },
     }
