@@ -4,6 +4,7 @@ from django.db.models import Q
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
 from api.models import UnidadeArmazenadora, Silo, Lote, Secador, Processo, Cliente, SensorData
+from api.services.custos_service import calcular_custos_processo
 
 def format_datetime(dt):
     """Formata datas para o formato legível em BR."""
@@ -75,7 +76,23 @@ def get_ai_context(user):
                     for t in s_obj.telemetries.filter(timestamp__gte=timezone.now() - timedelta(hours=24)).order_by('-timestamp')
                 ]
             } for s, s_obj in zip(sensores.values('id', 'sensor_id', 'tipo', 'status'), sensores)
-        ]
+        ],
+        "custos_processos_secagem": [
+            custo for p in processos if p.tipo_processo == 'Secagem' and p.data_fim is not None
+            and (custo := calcular_custos_processo(p)) is not None
+        ],
+        "totalizador_custos_secagem": (
+            (lambda totals: {
+                "total_combustivel": round(sum(t['custo_combustivel'] for t in totals), 2),
+                "total_energia": round(sum(t['custo_energia'] for t in totals), 2),
+                "total_mao_obra": round(sum(t['custo_mao_obra'] for t in totals), 2),
+                "total_manutencao": round(sum(t['custo_manutencao'] for t in totals), 2),
+                "total_depreciacao": round(sum(t['custo_depreciacao'] for t in totals), 2),
+                "total_geral": round(sum(t['custo_total'] for t in totals), 2),
+                "total_horas": round(sum(t['duracao_horas'] for t in totals), 2),
+                "quantidade_processos": len(totals),
+            })([c for p in processos if p.tipo_processo == 'Secagem' and p.data_fim is not None and (c := calcular_custos_processo(p)) is not None])
+        ) if any(p.tipo_processo == 'Secagem' and p.data_fim is not None for p in processos) else None,
     }
     
     return json.dumps(context_data, cls=DjangoJSONEncoder, ensure_ascii=False, indent=2)

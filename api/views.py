@@ -9,9 +9,9 @@ from .permissions import IsAdminOrReadOnly, IsAdminOrDeleteOnly, CanManageUsers
 from django.db.models import Avg, Max, Min, Q
 from django.utils import timezone
 from datetime import timedelta
-from decimal import Decimal
 from .services.foundation_ai_service import send_chat_request
 from .services.context_service import get_ai_context
+from .services.custos_service import calcular_custos_processo
 
 
 class SensorDataViewSet(viewsets.ModelViewSet):
@@ -194,72 +194,6 @@ def logout_view(request):
 
 
 
-def _calcular_custos_processo(processo):
-    """Calcula custos de um processo de secagem."""
-    if not processo.data_fim or not processo.data_inicio:
-        return None
-
-    duracao = processo.data_fim - processo.data_inicio
-    duracao_horas = duracao.total_seconds() / 3600
-    duracao_dias = duracao_horas / 24
-    secador = processo.secador
-
-    custo_combustivel = 0.0
-    custo_energia = 0.0
-    custo_mao_obra = 0.0
-    custo_manutencao = 0.0
-    custo_depreciacao = 0.0
-
-    if secador:
-        if secador.consumo_combustivel_hora and secador.preco_combustivel:
-            custo_combustivel = float(secador.consumo_combustivel_hora * float(secador.preco_combustivel) * duracao_horas)
-        if secador.consumo_energia_kwh and secador.preco_kwh:
-            custo_energia = float(secador.consumo_energia_kwh * float(secador.preco_kwh) * duracao_horas)
-        if secador.custo_mao_obra_hora:
-            custo_mao_obra = float(secador.custo_mao_obra_hora) * duracao_horas
-        if secador.custo_manutencao_anual:
-            custo_manutencao = float(secador.custo_manutencao_anual) / 365 * duracao_dias
-        if secador.custo_aquisicao and secador.valor_residual and secador.vida_util_anos:
-            custo_depreciacao = (float(secador.custo_aquisicao) - float(secador.valor_residual)) / secador.vida_util_anos / 365 * duracao_dias
-
-    custo_total = custo_combustivel + custo_energia + custo_mao_obra + custo_manutencao + custo_depreciacao
-
-    lote = processo.lote
-    agua_removida_kg = None
-    if lote and lote.peso_final and lote.peso_inicial:
-        agua_removida_kg = lote.peso_inicial - lote.peso_final
-
-    custo_por_ton_agua = None
-    if agua_removida_kg and agua_removida_kg > 0 and custo_total > 0:
-        custo_por_ton_agua = custo_total / (agua_removida_kg / 1000)
-
-    return {
-        'processo_id': processo.id,
-        'tipo_processo': processo.tipo_processo,
-        'status': processo.status,
-        'data_inicio': processo.data_inicio,
-        'data_fim': processo.data_fim,
-        'duracao_horas': round(duracao_horas, 2),
-        'lote_id': lote.id if lote else None,
-        'lote_numero': lote.numero_lote if lote else None,
-        'lote_cultura': lote.cultura if lote else None,
-        'lote_peso_inicial': lote.peso_inicial if lote else None,
-        'lote_peso_final': lote.peso_final if lote else None,
-        'secador_id': secador.id if secador else None,
-        'secador_nome': secador.nome if secador else None,
-        'secador_fonte_calor': secador.fonte_calor if secador else None,
-        'custo_combustivel': round(custo_combustivel, 2),
-        'custo_energia': round(custo_energia, 2),
-        'custo_mao_obra': round(custo_mao_obra, 2),
-        'custo_manutencao': round(custo_manutencao, 2),
-        'custo_depreciacao': round(custo_depreciacao, 2),
-        'custo_total': round(custo_total, 2),
-        'custo_por_hora': round(custo_total / duracao_horas, 2) if duracao_horas > 0 else 0,
-        'custo_por_ton_agua': round(custo_por_ton_agua, 2) if custo_por_ton_agua else None,
-        'agua_removida_kg': round(agua_removida_kg, 2) if agua_removida_kg else None,
-    }
-
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def custos_secagem_view(request):
@@ -285,9 +219,35 @@ def custos_secagem_view(request):
 
     results = []
     for p in processos:
-        cost_data = _calcular_custos_processo(p)
+        cost_data = calcular_custos_processo(p)
         if cost_data:
-            results.append(cost_data)
+            lote = p.lote
+            secador = p.secador
+            agua_removida_kg = None
+            if lote and lote.peso_final and lote.peso_inicial:
+                agua_removida_kg = lote.peso_inicial - lote.peso_final
+            custo_por_ton_agua = None
+            if agua_removida_kg and agua_removida_kg > 0 and cost_data.get('custo_total', 0) > 0:
+                custo_por_ton_agua = cost_data['custo_total'] / (agua_removida_kg / 1000)
+
+            results.append({
+                'processo_id': p.id,
+                'tipo_processo': p.tipo_processo,
+                'status': p.status,
+                'data_inicio': p.data_inicio,
+                'data_fim': p.data_fim,
+                'lote_id': lote.id if lote else None,
+                'lote_numero': lote.numero_lote if lote else None,
+                'lote_cultura': lote.cultura if lote else None,
+                'lote_peso_inicial': lote.peso_inicial if lote else None,
+                'lote_peso_final': lote.peso_final if lote else None,
+                'secador_id': secador.id if secador else None,
+                'secador_nome': secador.nome if secador else None,
+                'secador_fonte_calor': secador.fonte_calor if secador else None,
+                **cost_data,
+                'agua_removida_kg': round(agua_removida_kg, 2) if agua_removida_kg else None,
+                'custo_por_ton_agua': round(custo_por_ton_agua, 2) if custo_por_ton_agua else None,
+            })
 
     return Response(results)
 
