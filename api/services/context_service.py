@@ -52,7 +52,7 @@ def get_ai_context(user):
         ],
         "secadores": [
             {**s, "created_at": format_datetime(s_obj.created_at), "updated_at": format_datetime(s_obj.updated_at)} 
-            for s, s_obj in zip(secadores.values('id', 'nome', 'tipo', 'capacidade', 'status'), secadores)
+            for s, s_obj in zip(secadores.values('id', 'nome', 'tipo', 'capacidade', 'fonte_calor', 'status', 'custo_aquisicao', 'valor_residual', 'vida_util_anos', 'custo_instalacao', 'custo_manutencao_anual', 'consumo_combustivel_hora', 'preco_combustivel', 'consumo_energia_kwh', 'preco_kwh', 'custo_mao_obra_hora'), secadores)
         ],
         "processos": [
             {
