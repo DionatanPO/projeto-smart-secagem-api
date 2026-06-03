@@ -59,25 +59,30 @@ class Command(BaseCommand):
 
         base['valor_residual'] = round(base['custo_aquisicao'] * 0.12, 2)
 
-        # Consumo de combustível por fonte de calor
+        # Consumo de combustível por fonte de calor (valores reais de mercado)
         if fonte == 'Lenha':
-            base['consumo_combustivel_hora'] = round(cap * 55.0, 2)
-            base['preco_combustivel'] = 180.00
+            # ~400 kg/h para secador 60 t/h (0,8 m³/h × 500 kg/m³)
+            base['consumo_combustivel_hora'] = round(cap * 6.67, 2)
+            base['preco_combustivel'] = 0.36          # R$/kg (R$ 180/m³ ÷ 500 kg)
         elif fonte == 'Gás GLP':
-            base['consumo_combustivel_hora'] = round(cap * 8.5, 2)
-            base['preco_combustivel'] = 7.50
+            # GLP: ~90 L/h para secador 60 t/h
+            base['consumo_combustivel_hora'] = round(cap * 1.5, 2)
+            base['preco_combustivel'] = 7.50          # R$/L
         elif fonte == 'Biomassa':
-            base['consumo_combustivel_hora'] = round(cap * 65.0, 2)
-            base['preco_combustivel'] = 120.00
+            # Biomassa: ~400 kg/h para secador 60 t/h
+            base['consumo_combustivel_hora'] = round(cap * 6.67, 2)
+            base['preco_combustivel'] = 0.25          # R$/kg
         elif fonte == 'Elétrico':
             base['consumo_combustivel_hora'] = 0
             base['preco_combustivel'] = 0
 
-        # Consumo de energia
+        # Consumo de energia (kWh/h) — motores auxiliares
         if fonte == 'Elétrico':
-            base['consumo_energia_kwh'] = round(cap * 45.0, 2)
+            # Aquecimento resistivo + motores
+            base['consumo_energia_kwh'] = round(cap * 28.0 + 50.0, 2)
         else:
-            base['consumo_energia_kwh'] = round(cap * 15.0 + 8.0, 2)
+            # Apenas motores (ventiladores, roscas, elevadores)
+            base['consumo_energia_kwh'] = round(cap * 0.92, 2)
 
         # Mão de obra
         if cap <= 30:
