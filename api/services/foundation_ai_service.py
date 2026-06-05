@@ -52,21 +52,38 @@ def stream_chat_request(prompt, image_base64=None, history=None, use_rag=True, t
             stream=True
         ) as r:
             if r.status_code != 200:
-                yield {"type": "error", "content": f"Erro na IA: {r.status_code}"}
+                yield {"event": "error", "data": f"Erro na IA: {r.status_code}"}
                 return
+
+            # Mapeamento de tipos internos para o formato de eventos externo
+            mapping = {
+                "answer": "message",
+                "thought": "thought",
+                "metrics": "metrics",
+                "error": "error"
+            }
 
             for line in r.iter_lines():
                 if line:
                     try:
                         # Decodifica o JSON de cada linha do stream
                         event = json.loads(line.decode('utf-8'))
-                        yield event
+                        
+                        # Transforma para o formato solicitado
+                        transformed_event = {
+                            "event": mapping.get(event.get("type"), "message"),
+                            "data": event.get("content")
+                        }
+                        yield transformed_event
                     except json.JSONDecodeError:
                         continue
+            
+            # Evento final de conclusão
+            yield {"event": "done", "data": None}
 
     except requests.exceptions.ConnectionError:
-        yield {"type": "error", "content": "Não foi possível conectar à Foundation AI."}
+        yield {"event": "error", "data": "Não foi possível conectar à Foundation AI."}
     except requests.exceptions.Timeout:
-        yield {"type": "error", "content": "A Foundation AI demorou demais para responder."}
+        yield {"event": "error", "data": "A Foundation AI demorou demais para responder."}
     except Exception as e:
-        yield {"type": "error", "content": f"Erro inesperado: {str(e)}"}
+        yield {"event": "error", "data": f"Erro inesperado: {str(e)}"}
