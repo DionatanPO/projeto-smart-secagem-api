@@ -9,8 +9,20 @@ from .permissions import IsAdminOrReadOnly, IsAdminOrDeleteOnly, CanManageUsers
 from django.db.models import Avg, Max, Min, Q
 from django.utils import timezone
 from datetime import timedelta
+from django.http import JsonResponse
 from .services.context_service import get_ai_context
 from .services.custos_service import calcular_custos_processo
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def contexto_view(request):
+    """
+    Retorna todo o contexto estruturado para o frontend.
+    """
+    import json
+    contexto_json = get_ai_context(request.user)
+    return JsonResponse(json.loads(contexto_json), safe=False)
 
 
 class SensorDataViewSet(viewsets.ModelViewSet):
