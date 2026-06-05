@@ -12,20 +12,9 @@ FOUNDATION_AI_CHAT_URL = os.environ.get('FOUNDATION_AI_CHAT_URL', 'http://127.0.
 TIMEOUT_SECONDS = int(os.environ.get('FOUNDATION_AI_TIMEOUT', 300))
 
 
-def stream_chat_request(prompt, image_base64=None, history=None, use_rag=True, temperature=0.1, system_prompt=None):
+def send_chat_request(prompt, image_base64=None, history=None, use_rag=True, temperature=0.1, system_prompt=None):
     """
-    Envia uma requisição de chat para a Foundation AI local e gera respostas em stream.
-
-    Args:
-        prompt (str): Mensagem/pergunta do usuário.
-        image_base64 (str|None): Imagem em Base64.
-        history (list|None): Histórico da conversa.
-        use_rag (bool): Se a IA deve consultar a base interna.
-        temperature (float): Criatividade da resposta.
-        system_prompt (str|None): Instrução de sistema.
-
-    Yields:
-        dict: Evento no formato {"type": "...", "content": "..."}
+    Envia uma requisição de chat para a Foundation AI local e retorna a resposta.
     """
     payload = {
         "prompt": prompt,
@@ -43,47 +32,39 @@ def stream_chat_request(prompt, image_base64=None, history=None, use_rag=True, t
         payload["system_prompt"] = system_prompt
 
     try:
-        # stream=True é obrigatório para processar o fluxo NDJSON
-        with requests.post(
+        response = requests.post(
             FOUNDATION_AI_CHAT_URL,
             json=payload,
             timeout=TIMEOUT_SECONDS,
             headers={"Content-Type": "application/json"},
-            stream=True
-        ) as r:
-            if r.status_code != 200:
-                yield {"event": "error", "data": f"Erro na IA: {r.status_code}"}
-                return
+        )
 
-            # Mapeamento de tipos internos para o formato de eventos externo
-            mapping = {
-                "answer": "message",
-                "thought": "thought",
-                "metrics": "metrics",
-                "error": "error"
-            }
+        if response.status_code == 200:
+            data = response.json()
+            # Ajuste para formato síncrono esperado
+            return {"success": True, "response": data.get("response", "")}
 
-            for line in r.iter_lines():
-                if line:
-                    try:
-                        # Decodifica o JSON de cada linha do stream
-                        event = json.loads(line.decode('utf-8'))
-                        
-                        # Transforma para o formato solicitado
-                        transformed_event = {
-                            "event": mapping.get(event.get("type"), "message"),
-                            "data": event.get("content")
-                        }
-                        yield transformed_event
-                    except json.JSONDecodeError:
-                        continue
-            
-            # Evento final de conclusão
-            yield {"event": "done", "data": None}
+        return {
+            "success": False,
+            "error": response.json() if response.content else "Erro desconhecido na IA.",
+            "status_code": response.status_code,
+        }
 
     except requests.exceptions.ConnectionError:
-        yield {"event": "error", "data": "Não foi possível conectar à Foundation AI."}
+        return {
+            "success": False,
+            "error": "Não foi possível conectar à Foundation AI.",
+            "status_code": 503,
+        }
     except requests.exceptions.Timeout:
-        yield {"event": "error", "data": "A Foundation AI demorou demais para responder."}
+        return {
+            "success": False,
+            "error": "A Foundation AI demorou demais para responder.",
+            "status_code": 504,
+        }
     except Exception as e:
-        yield {"event": "error", "data": f"Erro inesperado: {str(e)}"}
+        return {
+            "success": False,
+            "error": f"Erro inesperado: {str(e)}",
+            "status_code": 500,
+        }

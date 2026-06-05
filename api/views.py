@@ -9,7 +9,7 @@ from .permissions import IsAdminOrReadOnly, IsAdminOrDeleteOnly, CanManageUsers
 from django.db.models import Avg, Max, Min, Q
 from django.utils import timezone
 from datetime import timedelta
-from .services.foundation_ai_service import stream_chat_request
+from .services.foundation_ai_service import send_chat_request
 from .services.context_service import get_ai_context
 from .services.custos_service import calcular_custos_processo
 
@@ -269,7 +269,7 @@ def chat_view(request):
     temperature   = request.data.get('temperature', 0.1)
     system_prompt = request.data.get('system_prompt', None)
 
-    # Instrução de formato obrigatória —necessária para o response_format com JSON Schema da Foundation AI
+    # Instrução de formato obrigatória
     base_instruction = (
         "Você é o especialista técnico do sistema 'Secagem Digital'. "
         "Responda estritamente em JSON com campo 'resposta' contendo Markdown. "
@@ -295,20 +295,17 @@ def chat_view(request):
     extras = f"\n\n{system_prompt}" if system_prompt else ""
     final_system_prompt = f"{base_instruction}{context_block}{extras}"
 
-    from django.http import StreamingHttpResponse
+    resultado = send_chat_request(
+        prompt=prompt,
+        image_base64=image_base64,
+        history=history,
+        use_rag=use_rag,
+        temperature=temperature,
+        system_prompt=final_system_prompt,
+    )
 
-    # ... (código anterior da chat_view até a linha 297)
+    if resultado['success']:
+        return Response({"response": resultado['response']}, status=status.HTTP_200_OK)
 
-    # Função geradora para o StreamingHttpResponse
-    def event_stream():
-        for event in stream_chat_request(
-            prompt=prompt,
-            image_base64=image_base64,
-            history=history,
-            use_rag=use_rag,
-            temperature=temperature,
-            system_prompt=final_system_prompt,
-        ):
-            yield json.dumps(event) + "\n"
-
-    return StreamingHttpResponse(event_stream(), content_type='application/x-ndjson')
+    error_status = resultado.get('status_code', 500)
+    return Response({"error": resultado['error']}, status=error_status)

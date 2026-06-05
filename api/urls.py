@@ -20,6 +20,5 @@ urlpatterns = [
     path('logout/', logout_view, name='api_logout'),
     path('custos/secagem/', custos_secagem_view, name='custos_secagem'),
     path('chat/', chat_view, name='chat'),
-    path('chat-stream/', chat_view, name='chat-stream'),
     path('me/', me_view, name='me'),
 ]
