@@ -9,7 +9,6 @@ from .permissions import IsAdminOrReadOnly, IsAdminOrDeleteOnly, CanManageUsers
 from django.db.models import Avg, Max, Min, Q
 from django.utils import timezone
 from datetime import timedelta
-from .services.foundation_ai_service import send_chat_request
 from .services.context_service import get_ai_context
 from .services.custos_service import calcular_custos_processo
 
@@ -252,60 +251,3 @@ def custos_secagem_view(request):
     return Response(results)
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def chat_view(request):
-    """
-    Recebe uma mensagem do Flutter e encaminha para a Foundation AI local.
-    """
-    prompt = request.data.get('prompt')
-    if not prompt:
-        return Response({"error": "O campo 'prompt' é obrigatório."}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Campos opcionais
-    image_base64  = request.data.get('image_base64', None)
-    history       = request.data.get('history', None)
-    use_rag       = request.data.get('use_rag', False)
-    temperature   = request.data.get('temperature', 0.1)
-    system_prompt = request.data.get('system_prompt', None)
-
-    # Instrução de formato obrigatória
-    base_instruction = (
-        "Você é o especialista técnico do sistema 'Secagem Digital'. "
-        "Responda estritamente em JSON com campo 'resposta' contendo Markdown. "
-        "Use o campo 'thinking' para seu raciocínio interno.\n\n"
-        "REGRAS DE FORMATAÇÃO:\n"
-        "- Use tabelas para dados numéricos de sensores (Silos, Secadores).\n"
-        "- Use **negrito** para entidades (ex: Lote, Cliente).\n"
-        "- Proibido o uso de emojis.\n"
-        "- Se a informação não estiver presente no CONTEXTO, responda: "
-        "'Não localizei essa informação nos documentos disponíveis.'\n"
-        "- Proibido inventar dados ou alucinar valores."
-    )
-
-    context_json = get_ai_context(request.user)
-
-    context_block = (
-        f"\n\n--- CONTEXTO DO SISTEMA (Dados em tempo real) ---\n"
-        f"Use estas informações para fundamentar sua resposta:\n\n"
-        f"{context_json}"
-    )
-
-    # Flutter pode enviar system_prompt opcional — é mesclado, não substitui
-    extras = f"\n\n{system_prompt}" if system_prompt else ""
-    final_system_prompt = f"{base_instruction}{context_block}{extras}"
-
-    resultado = send_chat_request(
-        prompt=prompt,
-        image_base64=image_base64,
-        history=history,
-        use_rag=use_rag,
-        temperature=temperature,
-        system_prompt=final_system_prompt,
-    )
-
-    if resultado['success']:
-        return Response({"response": resultado['response']}, status=status.HTTP_200_OK)
-
-    error_status = resultado.get('status_code', 500)
-    return Response({"error": resultado['error']}, status=error_status)
