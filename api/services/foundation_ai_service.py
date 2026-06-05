@@ -2,30 +2,30 @@
 Serviço para comunicação com a Foundation AI local.
 Encaminha requisições do Django para a API de IA rodando localmente.
 """
+import json
 import os
 import requests
 
 # URL completa do endpoint de chat da Foundation AI (outra API Django)
 FOUNDATION_AI_CHAT_URL = os.environ.get('FOUNDATION_AI_CHAT_URL', 'http://127.0.0.1:8001/api/chat/')
 
-TIMEOUT_SECONDS = 60
+TIMEOUT_SECONDS = int(os.environ.get('FOUNDATION_AI_TIMEOUT', 300))
 
 
-def send_chat_request(prompt, image_base64=None, history=None, use_rag=True, temperature=0.2, system_prompt=None):
+def stream_chat_request(prompt, image_base64=None, history=None, use_rag=True, temperature=0.1, system_prompt=None):
     """
-    Envia uma requisição de chat para a Foundation AI local e retorna a resposta.
+    Envia uma requisição de chat para a Foundation AI local e gera respostas em stream.
 
     Args:
-        prompt (str): Mensagem/pergunta do usuário. Obrigatório.
-        image_base64 (str|None): Imagem em Base64 com cabeçalho (ex: data:image/jpeg;base64,...). Opcional.
-        history (list|None): Histórico da conversa no formato [{"role": "user"|"assistant", "content": "..."}]. Opcional.
-        use_rag (bool): Se a IA deve consultar a base interna. Padrão True.
-        temperature (float): Criatividade da resposta (0.0 a 1.0). Padrão 0.2.
-        system_prompt (str|None): Instrução de sistema para o comportamento da IA. Opcional.
+        prompt (str): Mensagem/pergunta do usuário.
+        image_base64 (str|None): Imagem em Base64.
+        history (list|None): Histórico da conversa.
+        use_rag (bool): Se a IA deve consultar a base interna.
+        temperature (float): Criatividade da resposta.
+        system_prompt (str|None): Instrução de sistema.
 
-    Returns:
-        dict: {"success": True, "response": "texto da resposta"} em caso de sucesso.
-              {"success": False, "error": "mensagem de erro", "status_code": int} em caso de falha.
+    Yields:
+        dict: Evento no formato {"type": "...", "content": "..."}
     """
     payload = {
         "prompt": prompt,
@@ -43,39 +43,30 @@ def send_chat_request(prompt, image_base64=None, history=None, use_rag=True, tem
         payload["system_prompt"] = system_prompt
 
     try:
-        response = requests.post(
+        # stream=True é obrigatório para processar o fluxo NDJSON
+        with requests.post(
             FOUNDATION_AI_CHAT_URL,
             json=payload,
             timeout=TIMEOUT_SECONDS,
             headers={"Content-Type": "application/json"},
-        )
+            stream=True
+        ) as r:
+            if r.status_code != 200:
+                yield {"type": "error", "content": f"Erro na IA: {r.status_code}"}
+                return
 
-        if response.status_code == 200:
-            data = response.json()
-            return {"success": True, "response": data.get("response", "")}
-
-        # Erro de validação ou outro erro da API da IA
-        return {
-            "success": False,
-            "error": response.json() if response.content else "Erro desconhecido na IA.",
-            "status_code": response.status_code,
-        }
+            for line in r.iter_lines():
+                if line:
+                    try:
+                        # Decodifica o JSON de cada linha do stream
+                        event = json.loads(line.decode('utf-8'))
+                        yield event
+                    except json.JSONDecodeError:
+                        continue
 
     except requests.exceptions.ConnectionError:
-        return {
-            "success": False,
-            "error": "Não foi possível conectar à Foundation AI. Verifique se ela está rodando.",
-            "status_code": 503,
-        }
+        yield {"type": "error", "content": "Não foi possível conectar à Foundation AI."}
     except requests.exceptions.Timeout:
-        return {
-            "success": False,
-            "error": "A Foundation AI demorou demais para responder (timeout).",
-            "status_code": 504,
-        }
+        yield {"type": "error", "content": "A Foundation AI demorou demais para responder."}
     except Exception as e:
-        return {
-            "success": False,
-            "error": f"Erro inesperado ao comunicar com a IA: {str(e)}",
-            "status_code": 500,
-        }
+        yield {"type": "error", "content": f"Erro inesperado: {str(e)}"}

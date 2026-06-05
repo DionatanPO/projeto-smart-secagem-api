@@ -3,8 +3,10 @@ def calcular_custos_processo(processo):
     if not processo.data_fim or not processo.data_inicio:
         return None
 
-    duracao = processo.data_fim - processo.data_inicio
-    duracao_horas = duracao.total_seconds() / 3600
+    duracao_total = processo.data_fim - processo.data_inicio
+    tempo_pausado = processo.dados_extras.get('tempo_pausado_segundos', 0)
+    duracao_operacional = duracao_total.total_seconds() - tempo_pausado
+    duracao_horas = duracao_operacional / 3600
     duracao_dias = duracao_horas / 24
     secador = processo.secador
 

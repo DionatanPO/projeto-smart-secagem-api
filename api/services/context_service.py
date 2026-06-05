@@ -25,9 +25,14 @@ def dias_desde(dt):
 
 def get_ai_context(user):
     user_unidades = user.get_accessible_unidades()
+    now = timezone.now()
 
     lotes = Lote.objects.filter(unidade_armazenadora__in=user_unidades).select_related('cliente')
-    processos = Processo.objects.filter(lote__unidade_armazenadora__in=user_unidades).select_related('lote', 'secador', 'silo')
+    processos = Processo.objects.filter(
+        Q(lote__unidade_armazenadora__in=user_unidades) |
+        Q(secador__unidade_armazenadora__in=user_unidades) |
+        Q(silo__unidade_armazenadora__in=user_unidades)
+    ).distinct().select_related('lote', 'secador', 'silo')
     secadores = Secador.objects.filter(unidade_armazenadora__in=user_unidades)
     silos = Silo.objects.filter(unidade_armazenadora__in=user_unidades)
     sensores = SensorData.objects.filter(
@@ -35,7 +40,7 @@ def get_ai_context(user):
         Q(silo__unidade_armazenadora__in=user_unidades) |
         Q(secador__unidade_armazenadora__in=user_unidades)
     ).distinct()
-    clientes = Cliente.objects.filter(lotes__unidade_armazenadora__in=user_unidades).distinct()
+    clientes = Cliente.objects.filter(unidade_armazenadora__in=user_unidades)
 
     # ── PROCESSOS UNIFICADOS (joins inline) ──────────────────
     processos_completos = []
@@ -48,7 +53,7 @@ def get_ai_context(user):
             'status': p.status,
             'inicio': fmt(p.data_inicio),
             'termino': fmt(p.data_fim),
-            'duracao_horas': round((p.data_fim - p.data_inicio).total_seconds() / 3600, 2) if p.data_fim else None,
+            'duracao_horas': round(max(0, (p.data_fim - p.data_inicio).total_seconds() - p.dados_extras.get('tempo_pausado_segundos', 0)) / 3600, 2) if p.data_fim else None,
             'lote': {
                 'id': lote.id,
                 'numero': lote.numero_lote,
@@ -72,13 +77,23 @@ def get_ai_context(user):
             }
         else:
             item['secador'] = None
+        silo = p.silo
+        if silo:
+            item['silo'] = {
+                'id': silo.id,
+                'nome': silo.name,
+                'tipo': silo.tipo,
+                'status': silo.status,
+            }
+        else:
+            item['silo'] = None
         processos_completos.append(item)
 
     # ── RESUMO OPERACIONAL ───────────────────────────────────
-    now = timezone.now()
     processos_ativos = [p for p in processos if p.status in ('Iniciada', 'Pausada')]
     secadores_disponiveis = [s for s in secadores if s.status == 'Disponível']
-    lotes_ativos = [l for l in lotes if l.status not in ('despachado', 'finalizado')]
+    status_finalizados = ('despachado', 'finalizado', 'Secagem (Finalizada)', 'Secagem (Cancelada)', 'Aeração (Finalizada)', 'Aeração (Cancelada)')
+    lotes_ativos = [l for l in lotes if l.status not in status_finalizados]
     total_grao_armazenado = sum(s.current_quantity for s in silos if s.current_quantity)
 
     resumo = {
@@ -89,7 +104,7 @@ def get_ai_context(user):
         'secadores_disponiveis': len(secadores_disponiveis),
         'secadores_em_manutencao': len([s for s in secadores if s.status == 'Em Manutenção']),
         'silos_disponiveis': len([s for s in silos if s.status == 'disponivel']),
-        'grao_armazenado_total_kg': round(total_grao_armazenado, 0) if total_grao_armazenado else 0,
+        'grao_armazenado_total_kg': round(total_grao_armazenado * 1000, 0) if total_grao_armazenado else 0,
         'sensores_ativos': len([s for s in sensores if s.status == 'ativo']),
     }
 
@@ -98,8 +113,8 @@ def get_ai_context(user):
 
     # Processos pausados ha mais de 2h
     for p in processos:
-        if p.status == 'Pausada' and p.data_inicio:
-            horas_parado = (now - p.data_inicio).total_seconds() / 3600
+        if p.status == 'Pausada' and p.updated_at:
+            horas_parado = (now - p.updated_at).total_seconds() / 3600
             if horas_parado > 2:
                 nome = p.lote.numero_lote if p.lote else f'processo #{p.id}'
                 alertas.append(f'Processo {p.tipo_processo} do {nome} esta pausado ha {round(horas_parado)}h')
@@ -116,7 +131,7 @@ def get_ai_context(user):
 
     # Lotes parados sem saida ha mais de 30 dias
     for l in lotes:
-        if l.status not in ('despachado', 'finalizado') and l.data_entrada:
+        if l.status not in status_finalizados and l.data_entrada:
             dias_parado = (now - l.data_entrada).days
             if dias_parado > 30:
                 alertas.append(f'Lote {l.numero_lote} ({l.cultura}) esta ha {dias_parado} dias sem finalizar')
@@ -193,8 +208,8 @@ def get_ai_context(user):
         silos_dados.append({
             'id': s.id,
             'nome': s.name,
-            'capacidade_kg': s.capacity,
-            'ocupacao_kg': s.current_quantity or 0,
+            'capacidade_kg': s.capacity * 1000,
+            'ocupacao_kg': (s.current_quantity or 0) * 1000,
             'ocupacao_pct': ocupacao_pct,
             'status': s.status,
         })
