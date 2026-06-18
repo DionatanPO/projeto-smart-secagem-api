@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import SensorData, User, Silo, Telemetry, UnidadeArmazenadora, Lote, Secador, Processo, Cliente
+from .models import SensorData, User, Silo, Telemetry, UnidadeArmazenadora, Lote, Secador, Processo, Cliente, MotorAeracao
 
 class SensorDataSerializer(serializers.ModelSerializer):
     class Meta:
@@ -113,6 +113,15 @@ class ProcessoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Processo
+        fields = '__all__'
+
+
+class MotorAeracaoSerializer(serializers.ModelSerializer):
+    silo_name = serializers.CharField(source='silo.name', read_only=True, default=None)
+    secador_name = serializers.CharField(source='secador.nome', read_only=True, default=None)
+
+    class Meta:
+        model = MotorAeracao
         fields = '__all__'
 
 

@@ -1,10 +1,10 @@
 import json
 from rest_framework import viewsets, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
-from .models import SensorData, User, Silo, Telemetry, UnidadeArmazenadora, Lote, Secador, Processo, Cliente
-from .serializers import SensorDataSerializer, UserSerializer, MeSerializer, SiloSerializer, TelemetrySerializer, UnidadeArmazenadoraSerializer, LoteSerializer, SecadorSerializer, ProcessoSerializer, ClienteSerializer
+from .models import SensorData, User, Silo, Telemetry, UnidadeArmazenadora, Lote, Secador, Processo, Cliente, MotorAeracao
+from .serializers import SensorDataSerializer, UserSerializer, MeSerializer, SiloSerializer, TelemetrySerializer, UnidadeArmazenadoraSerializer, LoteSerializer, SecadorSerializer, ProcessoSerializer, ClienteSerializer, MotorAeracaoSerializer
 from .permissions import IsAdminOrReadOnly, IsAdminOrDeleteOnly, CanManageUsers
 from django.db.models import Avg, Max, Min, Q
 from django.utils import timezone
@@ -181,6 +181,39 @@ class ClienteViewSet(viewsets.ModelViewSet):
         if not unidade:
             raise PermissionError("Você não tem permissão para vincular clientes a esta unidade armazenadora.")
         serializer.save(unidade_armazenadora=unidade)
+
+
+class MotorAeracaoViewSet(viewsets.ModelViewSet):
+    queryset = MotorAeracao.objects.all()
+    serializer_class = MotorAeracaoSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrDeleteOnly]
+
+    def get_queryset(self):
+        unidades = self.request.user.get_accessible_unidades()
+        return MotorAeracao.objects.filter(
+            Q(silo__unidade_armazenadora__in=unidades) |
+            Q(secador__unidade_armazenadora__in=unidades)
+        ).distinct()
+
+    @action(detail=True, methods=['post'])
+    def comando(self, request, pk=None):
+        motor = self.get_object()
+        comando = request.data.get('comando')
+
+        if comando not in ('ligar', 'desligar'):
+            return Response(
+                {"error": "Comando inválido. Use 'ligar' ou 'desligar'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        motor.estado = 'ligado' if comando == 'ligar' else 'desligado'
+        motor.consumo_atual_kw = motor.potencia_kw if comando == 'ligar' else 0
+        motor.save()
+
+        return Response(
+            MotorAeracaoSerializer(motor).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 @api_view(['GET', 'PATCH'])

@@ -327,6 +327,44 @@ class Processo(models.Model):
             self.lote.refresh_from_db()
             self.lote.save()
 
+class MotorAeracao(models.Model):
+    STATUS_CHOICES = (
+        ('ativo', 'Ativo'),
+        ('manutencao', 'Em Manutenção'),
+        ('falha', 'Falha'),
+        ('desativado', 'Desativado'),
+    )
+    ESTADO_CHOICES = (
+        ('ligado', 'Ligado'),
+        ('desligado', 'Desligado'),
+    )
+
+    motor_id = models.CharField(max_length=50, unique=True, verbose_name="ID do Motor")
+    description = models.CharField(max_length=200, verbose_name="Descrição/Localização")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ativo', verbose_name="Status Operacional")
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='desligado', verbose_name="Estado")
+
+    potencia_kw = models.FloatField(null=True, blank=True, verbose_name="Potência (kW)")
+    rpm = models.FloatField(null=True, blank=True, verbose_name="RPM")
+    vazao_ar = models.FloatField(null=True, blank=True, verbose_name="Vazão de Ar (m³/h)")
+    horimetro = models.FloatField(null=True, blank=True, verbose_name="Horímetro (horas)")
+    consumo_atual_kw = models.FloatField(null=True, blank=True, verbose_name="Consumo Atual (kW)")
+
+    silo = models.ForeignKey('Silo', on_delete=models.SET_NULL, null=True, blank=True, related_name='motores_aeracao', verbose_name="Silo Vinculado")
+    secador = models.ForeignKey('Secador', on_delete=models.SET_NULL, null=True, blank=True, related_name='motores_aeracao', verbose_name="Secador Vinculado")
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
+
+    class Meta:
+        ordering = ['motor_id']
+        verbose_name = 'Motor de Aeração'
+        verbose_name_plural = 'Motores de Aeração'
+
+    def __str__(self):
+        return f"{self.motor_id} - {self.description}"
+
+
 class Cliente(models.Model):
     unidade_armazenadora = models.ForeignKey(UnidadeArmazenadora, on_delete=models.CASCADE, related_name='clientes', verbose_name="Unidade Armazenadora", null=True, blank=True)
     nome = models.CharField(max_length=200, verbose_name="Nome Completo")

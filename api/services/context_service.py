@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.db.models import Q
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
-from api.models import UnidadeArmazenadora, Silo, Lote, Secador, Processo, Cliente, SensorData
+from api.models import UnidadeArmazenadora, Silo, Lote, Secador, Processo, Cliente, SensorData, MotorAeracao
 from api.services.custos_service import calcular_custos_processo
 
 
@@ -41,6 +41,10 @@ def get_ai_context(user):
         Q(secador__unidade_armazenadora__in=user_unidades)
     ).distinct()
     clientes = Cliente.objects.filter(unidade_armazenadora__in=user_unidades)
+    motores = MotorAeracao.objects.filter(
+        Q(silo__unidade_armazenadora__in=user_unidades) |
+        Q(secador__unidade_armazenadora__in=user_unidades)
+    ).distinct()
 
     # ── PROCESSOS UNIFICADOS (joins inline) ──────────────────
     processos_completos = []
@@ -106,6 +110,9 @@ def get_ai_context(user):
         'silos_disponiveis': len([s for s in silos if s.status == 'disponivel']),
         'grao_armazenado_total_kg': round(total_grao_armazenado * 1000, 0) if total_grao_armazenado else 0,
         'sensores_ativos': len([s for s in sensores if s.status == 'ativo']),
+        'motores_total': motores.count(),
+        'motores_ligados': len([m for m in motores if m.estado == 'ligado']),
+        'motores_manutencao': len([m for m in motores if m.status == 'manutencao']),
     }
 
     # ── ALERTAS ──────────────────────────────────────────────
@@ -261,6 +268,20 @@ def get_ai_context(user):
         'clientes': [
             {'id': c.id, 'nome': c.nome, 'telefone': c.telefone}
             for c in clientes
+        ],
+        'motores': [
+            {
+                'id': m.id,
+                'motor_id': m.motor_id,
+                'descricao': m.description,
+                'status': m.status,
+                'estado': m.estado,
+                'potencia_kw': m.potencia_kw,
+                'rpm': m.rpm,
+                'vazao_ar': m.vazao_ar,
+                'vinculo': f'Silo: {m.silo.name}' if m.silo else (f'Secador: {m.secador.nome}' if m.secador else 'Sem vinculo'),
+            }
+            for m in motores
         ],
         'custos_secagem': {
             'processos': custos_processos_lista,

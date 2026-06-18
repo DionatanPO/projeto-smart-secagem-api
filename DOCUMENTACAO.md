@@ -938,7 +938,6 @@ Projeto-SMART-SECAGEM-API/
 │   │   └── 0035_cliente_farm_alter_user_account_type.py
 │   └── services/
 │       ├── __init__.py
-│       ├── foundation_ai_service.py   # Comunicação com IA local
 │       └── context_service.py         # Coleta de contexto para IA
 │
 ├── plataforma/                    # App legado — interface web
