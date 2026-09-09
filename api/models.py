@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 class User(AbstractUser):
@@ -27,8 +28,8 @@ class User(AbstractUser):
     def get_accessible_unidades(self):
         if self.account_type == 'super_admin':
             return UnidadeArmazenadora.objects.all()
-        if self.account_type == 'operador' and self.unidade_armazenadora:
-            return UnidadeArmazenadora.objects.filter(id=self.unidade_armazenadora.id)
+        if self.account_type in ('operador', 'visualizador') and self.unidade_armazenadora_id:
+            return UnidadeArmazenadora.objects.filter(id=self.unidade_armazenadora_id)
         if self.account_type == 'admin':
             return self.unidades_armazenadoras.all()
         return UnidadeArmazenadora.objects.none()
@@ -49,7 +50,7 @@ class User(AbstractUser):
             self.is_staff = True
             self.is_superuser = False
         elif self.account_type == 'operador':
-            self.is_staff = True
+            self.is_staff = False
             self.is_superuser = False
         else:
             self.is_staff = False
@@ -78,6 +79,26 @@ class SensorData(models.Model):
         verbose_name = 'Configuração de Sensor'
         verbose_name_plural = 'Configurações de Sensores'
 
+    def clean(self):
+        if not self.silo and not self.secador and not self.unidade_armazenadora:
+            raise ValidationError("Sensor precisa estar vinculado a um silo, secador ou unidade armazenadora.")
+        # Consistência: se há vínculo direto + via silo/secador, as unidades devem coincidir
+        unidade_via_silo = self.silo.unidade_armazenadora if self.silo and self.silo.unidade_armazenadora else None
+        unidade_via_secador = self.secador.unidade_armazenadora if self.secador and self.secador.unidade_armazenadora else None
+        for unidade_via in (unidade_via_silo, unidade_via_secador):
+            if unidade_via and self.unidade_armazenadora and unidade_via.pk != self.unidade_armazenadora.pk:
+                raise ValidationError("Unidade direta do sensor diverge da unidade do silo/secador vinculado.")
+
+    def save(self, *args, **kwargs):
+        # Auto-preenche a unidade direta a partir do silo/secador para não quebrar o escopo por farm
+        if not self.unidade_armazenadora:
+            if self.silo and self.silo.unidade_armazenadora:
+                self.unidade_armazenadora = self.silo.unidade_armazenadora
+            elif self.secador and self.secador.unidade_armazenadora:
+                self.unidade_armazenadora = self.secador.unidade_armazenadora
+        self.full_clean(exclude=None)
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"Sensor {self.sensor_id} - {self.silo.name if self.silo else 'Sem Silo'}"
 
@@ -98,7 +119,7 @@ class Telemetry(models.Model):
         return f"{self.sensor.sensor_id} | {self.temperatura}°C | {self.timestamp}"
 
 class UnidadeArmazenadora(models.Model):
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='unidades_armazenadoras', verbose_name="Dono/Usuário")
+    owner = models.ForeignKey(User, on_delete=models.PROTECT, related_name='unidades_armazenadoras', verbose_name="Dono/Usuário")
     name = models.CharField(max_length=100, verbose_name="Nome da Unidade Armazenadora")
     location = models.CharField(max_length=200, blank=True, null=True, verbose_name="Localização/Cidade")
     description = models.TextField(blank=True, null=True, verbose_name="Observações da Unidade")
@@ -126,7 +147,7 @@ class Silo(models.Model):
     
     name = models.CharField(max_length=100, verbose_name="Nome do Silo")
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='pulmao', verbose_name="Tipo do Silo")
-    unidade_armazenadora = models.ForeignKey(UnidadeArmazenadora, on_delete=models.CASCADE, related_name='silos', null=True, blank=True, verbose_name="Unidade Armazenadora")
+    unidade_armazenadora = models.ForeignKey(UnidadeArmazenadora, on_delete=models.CASCADE, related_name='silos', verbose_name="Unidade Armazenadora")
     capacity = models.FloatField(verbose_name="Capacidade Máxima (Toneladas)")
     current_quantity = models.FloatField(default=0, verbose_name="Quantidade Atual (Toneladas)")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='disponivel', verbose_name="Status")
@@ -142,6 +163,14 @@ class Silo(models.Model):
 
     def __str__(self):
         return self.name
+
+    def clean(self):
+        if not self.unidade_armazenadora_id:
+            raise ValidationError({"unidade_armazenadora": "Silo precisa estar vinculado a uma unidade armazenadora."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean(exclude=None)
+        super().save(*args, **kwargs)
 
 class Lote(models.Model):
     STATUS_CHOICES = (
@@ -160,7 +189,7 @@ class Lote(models.Model):
 
     numero_lote = models.CharField(max_length=50, unique=True, blank=True, verbose_name="Número do Lote")
     unidade_armazenadora = models.ForeignKey(UnidadeArmazenadora, on_delete=models.CASCADE, related_name='lotes', verbose_name="Unidade Armazenadora")
-    cliente = models.ForeignKey('Cliente', on_delete=models.PROTECT, related_name='lotes', verbose_name="Cliente/Produtor", null=True)
+    cliente = models.ForeignKey('Cliente', on_delete=models.PROTECT, related_name='lotes', verbose_name="Cliente/Produtor")
     cultura = models.CharField(max_length=100, verbose_name="Cultura (ex: Milho, Soja)")
     variedade = models.CharField(max_length=100, blank=True, null=True, verbose_name="Variedade")
     safra = models.CharField(max_length=20, verbose_name="Safra")
@@ -192,6 +221,10 @@ class Lote(models.Model):
         return f"Lote {self.numero_lote} - {self.cultura}"
 
     def save(self, *args, **kwargs):
+        if not self.unidade_armazenadora_id:
+            raise ValidationError({"unidade_armazenadora": "Lote precisa estar vinculado a uma unidade armazenadora."})
+        if not self.cliente_id:
+            raise ValidationError({"cliente": "Lote precisa estar vinculado a um cliente."})
         is_new = self.pk is None
         
         # Salvamos primeiro para garantir o ID se for novo
@@ -280,7 +313,7 @@ class Processo(models.Model):
     )
 
     tipo_processo = models.CharField(max_length=20, choices=TIPO_PROCESSO_CHOICES, default='Secagem', verbose_name="Tipo de Atividade")
-    lote = models.ForeignKey(Lote, on_delete=models.CASCADE, related_name='processos', verbose_name="Lote", null=True, blank=True)
+    lote = models.ForeignKey(Lote, on_delete=models.CASCADE, related_name='processos', verbose_name="Lote")
     secador = models.ForeignKey(Secador, on_delete=models.SET_NULL, null=True, blank=True, related_name='processos', verbose_name="Secador")
     silo = models.ForeignKey(Silo, on_delete=models.SET_NULL, null=True, blank=True, related_name='processos', verbose_name="Silo")
     
@@ -300,12 +333,18 @@ class Processo(models.Model):
         verbose_name_plural = 'Processos Operacionais'
 
     def __str__(self):
-        lote_str = self.lote.numero_lote if self.lote else "S/ Lote"
-        return f"{self.tipo_processo} | {lote_str} | {self.status}"
+        return f"{self.tipo_processo} | {self.lote.numero_lote} | {self.status}"
+
+    def clean(self):
+        if not self.lote_id:
+            raise ValidationError({"lote": "Processo precisa estar vinculado a um lote."})
+        if self.tipo_processo == 'Secagem' and not self.secador_id:
+            raise ValidationError({"secador": "Processo de Secagem exige um secador."})
 
     def save(self, *args, **kwargs):
+        self.full_clean(exclude=None)
         # Validação de Segurança: Um lote não pode ter duas atividades ativas ao mesmo tempo
-        if self.lote and self.status in ['Iniciada', 'Pausada']:
+        if self.status in ['Iniciada', 'Pausada']:
             # Procuramos outros processos ativos para este mesmo lote (excluindo o atual)
             conflito = Processo.objects.filter(
                 lote=self.lote, 
@@ -313,19 +352,18 @@ class Processo(models.Model):
             ).exclude(pk=self.pk).exists()
             
             if conflito:
-                raise ValueError(f"O lote {self.lote.numero_lote} já possui uma atividade em andamento ou pausada.")
+                raise ValidationError(f"O lote {self.lote.numero_lote} já possui uma atividade em andamento ou pausada.")
 
         # Primeiro salvamos o processo
         super().save(*args, **kwargs)
         
         # Sincronização automática com o status do Lote
-        if self.lote:
-            # Ex: Secagem (Iniciada), Aeração (Finalizada)
-            new_status = f"{self.tipo_processo} ({self.status})"
-            
-            Lote.objects.filter(id=self.lote.id).update(status=new_status)
-            self.lote.refresh_from_db()
-            self.lote.save()
+        # Ex: Secagem (Iniciada), Aeração (Finalizada)
+        new_status = f"{self.tipo_processo} ({self.status})"
+        
+        Lote.objects.filter(id=self.lote.id).update(status=new_status)
+        self.lote.refresh_from_db()
+        self.lote.save()
 
 class MotorAeracao(models.Model):
     STATUS_CHOICES = (
@@ -364,9 +402,17 @@ class MotorAeracao(models.Model):
     def __str__(self):
         return f"{self.motor_id} - {self.description}"
 
+    def clean(self):
+        if not self.silo and not self.secador:
+            raise ValidationError("Motor precisa estar vinculado a um silo ou secador.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean(exclude=None)
+        super().save(*args, **kwargs)
+
 
 class Cliente(models.Model):
-    unidade_armazenadora = models.ForeignKey(UnidadeArmazenadora, on_delete=models.CASCADE, related_name='clientes', verbose_name="Unidade Armazenadora", null=True, blank=True)
+    unidade_armazenadora = models.ForeignKey(UnidadeArmazenadora, on_delete=models.CASCADE, related_name='clientes', verbose_name="Unidade Armazenadora")
     nome = models.CharField(max_length=200, verbose_name="Nome Completo")
     email = models.EmailField(max_length=200, blank=True, null=True, verbose_name="E-mail")
     telefone = models.CharField(max_length=20, blank=True, null=True, verbose_name="Telefone")
@@ -382,3 +428,39 @@ class Cliente(models.Model):
 
     def __str__(self):
         return self.nome
+
+    def clean(self):
+        if not self.unidade_armazenadora_id:
+            raise ValidationError({"unidade_armazenadora": "Cliente precisa estar vinculado a uma unidade armazenadora."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean(exclude=None)
+        super().save(*args, **kwargs)
+
+
+class Notificacao(models.Model):
+    TIPO_CHOICES = (
+        ('Critical', 'Crítico'),
+        ('Warning', 'Alerta'),
+        ('Info', 'Informativo'),
+        ('System', 'Sistema'),
+    )
+
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notificacoes', verbose_name="Usuário")
+    titulo = models.CharField(max_length=200, verbose_name="Título")
+    descricao = models.TextField(verbose_name="Descrição")
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='Info', verbose_name="Tipo")
+    icone = models.CharField(max_length=50, default='notifications_rounded', verbose_name="Ícone")
+    cor = models.CharField(max_length=20, default='blue', verbose_name="Cor")
+    target = models.CharField(max_length=100, blank=True, null=True, verbose_name="Alvo (secador/silo)")
+    is_read = models.BooleanField(default=False, verbose_name="Lida")
+    dedup_key = models.CharField(max_length=200, blank=True, null=True, verbose_name="Chave de dedup")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Criada em")
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Notificação'
+        verbose_name_plural = 'Notificações'
+
+    def __str__(self):
+        return f"{self.titulo} - {self.usuario.username}"

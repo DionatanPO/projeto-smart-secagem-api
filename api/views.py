@@ -1,10 +1,11 @@
 import json
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
-from .models import SensorData, User, Silo, Telemetry, UnidadeArmazenadora, Lote, Secador, Processo, Cliente, MotorAeracao
-from .serializers import SensorDataSerializer, UserSerializer, MeSerializer, SiloSerializer, TelemetrySerializer, UnidadeArmazenadoraSerializer, LoteSerializer, SecadorSerializer, ProcessoSerializer, ClienteSerializer, MotorAeracaoSerializer
+from .models import SensorData, User, Silo, Telemetry, UnidadeArmazenadora, Lote, Secador, Processo, Cliente, MotorAeracao, Notificacao
+from .serializers import SensorDataSerializer, UserSerializer, MeSerializer, SiloSerializer, TelemetrySerializer, UnidadeArmazenadoraSerializer, LoteSerializer, SecadorSerializer, ProcessoSerializer, ClienteSerializer, MotorAeracaoSerializer, NotificacaoSerializer
 from .permissions import IsAdminOrReadOnly, IsAdminOrDeleteOnly, CanManageUsers
 from django.db.models import Avg, Max, Min, Q
 from django.utils import timezone
@@ -12,6 +13,7 @@ from datetime import timedelta
 from django.http import JsonResponse
 from .services.context_service import get_ai_context
 from .services.custos_service import calcular_custos_processo
+from .services.notificacoes_service import gerar_todas_notificacoes
 
 
 @api_view(['GET'])
@@ -46,7 +48,7 @@ class SensorDataViewSet(viewsets.ModelViewSet):
 class TelemetryViewSet(viewsets.ModelViewSet):
     queryset = Telemetry.objects.all()
     serializer_class = TelemetrySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminOrDeleteOnly]
 
     def get_queryset(self):
         unidades = self.request.user.get_accessible_unidades()
@@ -101,7 +103,7 @@ class TelemetryViewSet(viewsets.ModelViewSet):
 class SiloViewSet(viewsets.ModelViewSet):
     queryset = Silo.objects.all()
     serializer_class = SiloSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminOrDeleteOnly]
 
     def get_queryset(self):
         unidades = self.request.user.get_accessible_unidades()
@@ -162,6 +164,34 @@ class UserViewSet(viewsets.ModelViewSet):
             ) | User.objects.filter(id=user.id)
         return User.objects.none()
 
+    def _check_hierarchy(self, target_type, unidade=None):
+        creator = self.request.user
+        if not creator.can_manage_type(target_type):
+            raise PermissionDenied(
+                f"Você ({creator.account_type}) não pode gerenciar usuários do tipo '{target_type}'."
+            )
+        if target_type in ('operador', 'visualizador'):
+            if unidade is None:
+                raise PermissionDenied("Operador/visualizador precisa de unidade armazenadora.")
+            acessiveis = creator.get_accessible_unidades()
+            uid = unidade.id if hasattr(unidade, 'id') else unidade
+            if not acessiveis.filter(id=uid).exists():
+                raise PermissionDenied("Sem permissão para esta unidade armazenadora.")
+
+    def perform_create(self, serializer):
+        target_type = serializer.validated_data.get('account_type', 'visualizador')
+        unidade = serializer.validated_data.get('unidade_armazenadora')
+        self._check_hierarchy(target_type, unidade)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        target_type = serializer.validated_data.get('account_type', serializer.instance.account_type)
+        unidade = serializer.validated_data.get('unidade_armazenadora', serializer.instance.unidade_armazenadora)
+        # Troca de tipo exige hierarquia (manter o mesmo tipo é livre)
+        if target_type != serializer.instance.account_type:
+            self._check_hierarchy(target_type, unidade)
+        serializer.save()
+
 class ClienteViewSet(viewsets.ModelViewSet):
     queryset = Cliente.objects.all()
     serializer_class = ClienteSerializer
@@ -179,7 +209,7 @@ class ClienteViewSet(viewsets.ModelViewSet):
         else:
             unidade = unidades.filter(id=unidade_id).first()
         if not unidade:
-            raise PermissionError("Você não tem permissão para vincular clientes a esta unidade armazenadora.")
+            raise PermissionDenied("Você não tem permissão para vincular clientes a esta unidade armazenadora.")
         serializer.save(unidade_armazenadora=unidade)
 
 
@@ -214,6 +244,41 @@ class MotorAeracaoViewSet(viewsets.ModelViewSet):
             MotorAeracaoSerializer(motor).data,
             status=status.HTTP_200_OK,
         )
+
+
+class NotificacaoViewSet(viewsets.ModelViewSet):
+    serializer_class = NotificacaoSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Notificacao.objects.filter(usuario=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(usuario=self.request.user)
+
+    @action(detail=False, methods=['post'])
+    def gerar(self, request):
+        gerar_todas_notificacoes(request.user)
+        qs = self.get_queryset()
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def marcar_lida(self, request):
+        notif_id = request.data.get('id')
+        if notif_id:
+            Notificacao.objects.filter(id=notif_id, usuario=request.user).update(is_read=True)
+        return Response({'status': 'ok'})
+
+    @action(detail=False, methods=['post'])
+    def marcar_todas_lidas(self, request):
+        Notificacao.objects.filter(usuario=request.user, is_read=False).update(is_read=True)
+        return Response({'status': 'ok'})
+
+    @action(detail=False, methods=['post'])
+    def limpar(self, request):
+        Notificacao.objects.filter(usuario=request.user).delete()
+        return Response({'status': 'ok'})
 
 
 @api_view(['GET', 'PATCH'])
