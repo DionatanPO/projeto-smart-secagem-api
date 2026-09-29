@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import SensorData, User, Silo, Telemetry, UnidadeArmazenadora, Lote, Secador, Processo, Cliente, MotorAeracao, Notificacao
+from .models import SensorData, User, Silo, Telemetry, UnidadeArmazenadora, Lote, Secador, Processo, Cliente, MotorAeracao, Notificacao, ReceitaSecagem, ParametroAutomacaoSecador
 
 class SensorDataSerializer(serializers.ModelSerializer):
     class Meta:
@@ -19,7 +19,7 @@ class TelemetrySerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Telemetry
-        fields = ['id', 'sensor', 'sensor_physical_id', 'temperatura', 'umidade', 'dados_extras', 'timestamp', 'received_at']
+        fields = ['id', 'sensor', 'sensor_physical_id', 'temperatura', 'umidade', 'co2_ppm', 'dados_extras', 'timestamp', 'received_at']
 
 class UnidadeArmazenadoraSerializer(serializers.ModelSerializer):
     class Meta:
@@ -209,3 +209,46 @@ class NotificacaoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notificacao
         fields = ['id', 'titulo', 'descricao', 'tipo', 'icone', 'cor', 'target', 'is_read', 'created_at']
+
+
+class ReceitaSecagemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReceitaSecagem
+        fields = '__all__'
+
+    def validate(self, data):
+        alvo = data.get('temp_ar_alvo', getattr(self.instance, 'temp_ar_alvo', None))
+        corte = data.get('temp_ar_max', getattr(self.instance, 'temp_ar_max', None))
+        if alvo is not None and corte is not None and alvo > corte:
+            raise serializers.ValidationError({"temp_ar_alvo": "Temp. alvo não pode exceder o corte máximo."})
+        return data
+
+
+class ParametroAutomacaoSecadorSerializer(serializers.ModelSerializer):
+    secador_nome = serializers.CharField(source='secador.nome', read_only=True)
+    sensor_ambiente_physical_id = serializers.CharField(source='sensor_ambiente.sensor_id', read_only=True, default=None, allow_null=True)
+    receita_nome = serializers.CharField(source='receita.nome', read_only=True, default=None, allow_null=True)
+
+    class Meta:
+        model = ParametroAutomacaoSecador
+        fields = '__all__'
+        read_only_fields = ['atualizado_por']
+
+    def validate(self, data):
+        alvo = data.get('temp_ar_alvo', getattr(self.instance, 'temp_ar_alvo', None))
+        corte = data.get('temp_ar_max', getattr(self.instance, 'temp_ar_max', None))
+        if alvo is not None and corte is not None and alvo > corte:
+            raise serializers.ValidationError({"temp_ar_alvo": "Temp. alvo não pode exceder o corte máximo."})
+        umid_in = data.get('umidade_entrada', getattr(self.instance, 'umidade_entrada', None))
+        modo = data.get('modo_descarga', getattr(self.instance, 'modo_descarga', None))
+        if umid_in is not None and umid_in > 18 and modo == 'continuo':
+            raise serializers.ValidationError({"modo_descarga": "Umidade de entrada acima de 18% exige descarga intermitente (contínua só até 18%)."})
+        sensor = data.get('sensor_ambiente', getattr(self.instance, 'sensor_ambiente', None))
+        secador = data.get('secador', getattr(self.instance, 'secador', None))
+        if sensor and secador:
+            if sensor.silo_id or sensor.secador_id:
+                raise serializers.ValidationError({"sensor_ambiente": "Sensor ambiente deve estar vinculado só à unidade (estação meteorológica)."})
+            sec_unidade = getattr(secador, 'unidade_armazenadora_id', None)
+            if sec_unidade and sensor.unidade_armazenadora_id and sensor.unidade_armazenadora_id != sec_unidade:
+                raise serializers.ValidationError({"sensor_ambiente": "Sensor ambiente deve ser da mesma unidade do secador."})
+        return data

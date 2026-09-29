@@ -106,6 +106,7 @@ class Telemetry(models.Model):
     sensor = models.ForeignKey(SensorData, on_delete=models.CASCADE, related_name='telemetries')
     temperatura = models.FloatField(null=True, blank=True, verbose_name="Temperatura (°C)")
     umidade = models.FloatField(null=True, blank=True, verbose_name="Umidade (%)")
+    co2_ppm = models.FloatField(null=True, blank=True, verbose_name="CO₂ (ppm)")
     dados_extras = models.JSONField(default=dict, blank=True, null=True, verbose_name="Dados Extras (JSON)")
     timestamp = models.DateTimeField(verbose_name="Data/Hora da Coleta (ISO)")
     received_at = models.DateTimeField(auto_now_add=True, verbose_name="Data/Hora de Recebimento")
@@ -116,7 +117,8 @@ class Telemetry(models.Model):
         verbose_name_plural = 'Telemetrias'
 
     def __str__(self):
-        return f"{self.sensor.sensor_id} | {self.temperatura}°C | {self.timestamp}"
+        co2 = f" | {self.co2_ppm}ppm" if self.co2_ppm is not None else ""
+        return f"{self.sensor.sensor_id} | {self.temperatura}°C{co2} | {self.timestamp}"
 
 class UnidadeArmazenadora(models.Model):
     owner = models.ForeignKey(User, on_delete=models.PROTECT, related_name='unidades_armazenadoras', verbose_name="Dono/Usuário")
@@ -464,3 +466,141 @@ class Notificacao(models.Model):
 
     def __str__(self):
         return f"{self.titulo} - {self.usuario.username}"
+
+
+class ReceitaSecagem(models.Model):
+    """Preset de receita por cultura (ex: Milho consumo, Soja semente)."""
+
+    cultura = models.CharField(max_length=100, verbose_name="Cultura (ex: Milho, Soja)")
+    nome = models.CharField(max_length=100, verbose_name="Nome da receita")
+    umidade_alvo = models.FloatField(default=13.5, verbose_name="Umidade alvo saída (%)")
+
+    temp_ar_alvo = models.FloatField(verbose_name="Temp. ar secagem alvo (°C)")
+    temp_ar_max = models.FloatField(verbose_name="Temp. ar corte máx (°C)")
+    temp_massa_max = models.FloatField(default=50.0, verbose_name="Temp. massa grãos máx (°C)")
+    temp_exaustao_alvo = models.FloatField(null=True, blank=True, verbose_name="Temp. exaustão referência (°C)")
+    histerese = models.FloatField(default=2.0, verbose_name="Histerese (°C)")
+
+    modo_descarga = models.CharField(
+        max_length=30,
+        choices=(
+            ('continuo', 'Contínuo'),
+            ('intermitente_tempo', 'Intermitente por tempo'),
+            ('intermitente_umidade', 'Intermitente por umidade'),
+        ),
+        default='intermitente_tempo',
+        verbose_name="Modo de descarga",
+    )
+    descarga_on_min = models.FloatField(default=3.0, verbose_name="Descarga ON (min)")
+    descarga_off_min = models.FloatField(default=12.0, verbose_name="Descarga OFF (min)")
+    velocidade_rolo_pct = models.FloatField(default=60.0, verbose_name="Velocidade rolo/comporta (%)")
+    ventilacao_pct = models.FloatField(default=100.0, verbose_name="Ventilação (%)")
+    tempo_resfriamento_min = models.IntegerField(default=30, verbose_name="Resfriamento final (min)")
+
+    # Lote 1 (literatura BR): vazão alvo + critérios de fim de secagem
+    vazao_ar_alvo = models.FloatField(null=True, blank=True, verbose_name="Vazão de ar alvo (m³/h)")
+    saida_acima_ambiente_max = models.FloatField(default=10.0, verbose_name="Saída do grão: máx °C acima do ambiente")
+    delta_exaustao_fim = models.FloatField(default=20.0, verbose_name="Delta plenum–exaustão de fim (°C)")
+
+    observacao = models.TextField(blank=True, null=True, verbose_name="Observações")
+    ativo = models.BooleanField(default=True, verbose_name="Ativa")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['cultura', 'nome']
+        verbose_name = 'Receita de Secagem'
+        verbose_name_plural = 'Receitas de Secagem'
+
+    def __str__(self):
+        return f"{self.cultura} - {self.nome}"
+
+    def clean(self):
+        if self.temp_ar_alvo and self.temp_ar_max and self.temp_ar_alvo > self.temp_ar_max:
+            raise ValidationError({"temp_ar_alvo": "Temp. alvo não pode exceder o corte máximo."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean(exclude=None)
+        super().save(*args, **kwargs)
+
+
+class ParametroAutomacaoSecador(models.Model):
+    """Configuração de automação por secador (OneToOne com Secador)."""
+
+    MODO_OPERACAO_CHOICES = (
+        ('manual', 'Manual'),
+        ('semi', 'Semi-automático'),
+        ('auto', 'Automático'),
+    )
+    MODO_DESCARGA_CHOICES = (
+        ('continuo', 'Contínuo'),
+        ('intermitente_tempo', 'Intermitente por tempo'),
+        ('intermitente_umidade', 'Intermitente por umidade'),
+    )
+
+    secador = models.OneToOneField('Secador', on_delete=models.CASCADE, related_name='parametros_automacao', verbose_name="Secador")
+    receita = models.ForeignKey(ReceitaSecagem, on_delete=models.SET_NULL, null=True, blank=True, related_name='parametros', verbose_name="Receita base")
+    sensor_ambiente = models.ForeignKey(
+        'SensorData', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='parametros_ambiente', verbose_name="Sensor ambiente / estação (unidade)",
+    )
+
+    modo_operacao = models.CharField(max_length=10, choices=MODO_OPERACAO_CHOICES, default='manual', verbose_name="Modo de operação")
+    cultura = models.CharField(max_length=100, blank=True, default='', verbose_name="Cultura atual")
+    umidade_entrada = models.FloatField(null=True, blank=True, verbose_name="Umidade entrada (%)")
+    umidade_alvo = models.FloatField(default=13.5, verbose_name="Umidade alvo saída (%)")
+
+    temp_ar_alvo = models.FloatField(default=90.0, verbose_name="Temp. ar secagem alvo (°C)")
+    temp_ar_max = models.FloatField(default=110.0, verbose_name="Temp. ar corte máx (°C)")
+    temp_massa_max = models.FloatField(default=50.0, verbose_name="Temp. massa grãos máx (°C)")
+    temp_exaustao_alvo = models.FloatField(null=True, blank=True, verbose_name="Temp. exaustão referência (°C)")
+    histerese = models.FloatField(default=2.0, verbose_name="Histerese (°C)")
+
+    modo_descarga = models.CharField(max_length=30, choices=MODO_DESCARGA_CHOICES, default='intermitente_tempo', verbose_name="Modo de descarga")
+    descarga_on_min = models.FloatField(default=3.0, verbose_name="Descarga ON (min)")
+    descarga_off_min = models.FloatField(default=12.0, verbose_name="Descarga OFF (min)")
+    velocidade_rolo_pct = models.FloatField(default=60.0, verbose_name="Velocidade rolo/comporta (%)")
+    tempo_resfriamento_min = models.IntegerField(default=30, verbose_name="Resfriamento final (min)")
+
+    ventilacao_pct = models.FloatField(default=100.0, verbose_name="Ventilação (%)")
+    pressao_plenum_min = models.FloatField(null=True, blank=True, verbose_name="Pressão plenum mínima")
+
+    # Lote 1 (literatura BR): vazão alvo + critérios de fim de secagem
+    vazao_ar_alvo = models.FloatField(null=True, blank=True, verbose_name="Vazão de ar alvo (m³/h)")
+    saida_acima_ambiente_max = models.FloatField(default=10.0, verbose_name="Saída do grão: máx °C acima do ambiente")
+    delta_exaustao_fim = models.FloatField(default=20.0, verbose_name="Delta plenum–exaustão de fim (°C)")
+
+    intertravamento_fornalha = models.BooleanField(default=True, verbose_name="Intertravar fornalha sem ventilador")
+    corte_emergencia_incendio = models.BooleanField(default=True, verbose_name="Corte emergência por incêndio")
+    correcao_ambiente_auto = models.BooleanField(default=True, verbose_name="Correção automática por T_ext/UR_ext")
+
+    ativo = models.BooleanField(default=True, verbose_name="Automação ativa")
+    atualizado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Atualizado por")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Parâmetro de Automação do Secador'
+        verbose_name_plural = 'Parâmetros de Automação dos Secadores'
+
+    def __str__(self):
+        return f"Automação {self.secador.nome} ({self.modo_operacao})"
+
+    def clean(self):
+        if self.temp_ar_alvo and self.temp_ar_max and self.temp_ar_alvo > self.temp_ar_max:
+            raise ValidationError({"temp_ar_alvo": "Temp. alvo não pode exceder o corte máximo."})
+        # Regra dos 18% (SeedNews/Weber): secagem contínua só até 18% b.u. de entrada.
+        if self.umidade_entrada and self.umidade_entrada > 18 and self.modo_descarga == 'continuo':
+            raise ValidationError({"modo_descarga": "Umidade de entrada acima de 18% exige descarga intermitente (contínua só até 18%)."})
+        # Sensor ambiente deve ser de unidade (sem silo/secador) e da mesma unidade do secador
+        if self.sensor_ambiente and self.secador_id:
+            s = self.sensor_ambiente
+            if s.silo_id or s.secador_id:
+                raise ValidationError({"sensor_ambiente": "Sensor ambiente deve estar vinculado só à unidade (estação meteorológica)."})
+            sec_unidade = getattr(self.secador, 'unidade_armazenadora_id', None)
+            if sec_unidade and s.unidade_armazenadora_id and s.unidade_armazenadora_id != sec_unidade:
+                raise ValidationError({"sensor_ambiente": "Sensor ambiente deve ser da mesma unidade do secador."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean(exclude=None)
+        super().save(*args, **kwargs)

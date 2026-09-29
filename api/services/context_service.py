@@ -226,15 +226,72 @@ def get_ai_context(user):
     for s in sensores:
         ultimas = list(s.telemetries.filter(
             timestamp__gte=now - timedelta(hours=24)
-        ).order_by('-timestamp').values('temperatura', 'umidade', 'timestamp')[:5])
+        ).order_by('-timestamp').values('temperatura', 'umidade', 'co2_ppm', 'timestamp')[:5])
         for t in ultimas:
             t['timestamp'] = fmt(t['timestamp'])
+        if s.secador_id:
+            vinculo = 'secador'
+        elif s.silo_id:
+            vinculo = 'silo'
+        else:
+            vinculo = 'externa_unidade'
         sensores_dados.append({
             'id_fisico': s.sensor_id,
             'tipo': s.tipo,
             'status': s.status,
+            'vinculo': vinculo,
             'ultimas_leituras': ultimas if ultimas else None,
         })
+
+    # ── CONDIÇÕES EXTERNAS (estação da unidade) ──────────────
+    # Sensores vinculados só à unidade (sem silo/secador) medem o ambiente
+    # externo. Temperatura e umidade externas podem vir de sensores
+    # separados (ex: um termômetro + um higrômetro), por isso combina-se a
+    # última temperatura e a última umidade disponíveis.
+    # O chat deve mapear para cá: "temperatura externa", "umidade externa",
+    # "clima", "tempo lá fora", "condição ambiente", "estação meteorológica".
+    condicoes_externas = []
+    for u in user_unidades:
+        temp_ext = umid_ext = co2_ext = None
+        temp_em = umid_em = co2_em = None
+        for s in sensores.filter(unidade_armazenadora=u, silo__isnull=True, secador__isnull=True):
+            ult = list(s.telemetries.order_by('-timestamp').values('temperatura', 'umidade', 'co2_ppm', 'timestamp')[:3])
+            for t in ult:
+                if temp_ext is None and t['temperatura'] is not None:
+                    temp_ext, temp_em = t['temperatura'], fmt(t['timestamp'])
+                if umid_ext is None and t['umidade'] is not None:
+                    umid_ext, umid_em = t['umidade'], fmt(t['timestamp'])
+                if co2_ext is None and t['co2_ppm'] is not None:
+                    co2_ext, co2_em = t['co2_ppm'], fmt(t['timestamp'])
+            if temp_ext is not None and umid_ext is not None and co2_ext is not None:
+                break
+        condicoes_externas.append({
+            'unidade_id': u.id,
+            'unidade_nome': u.name,
+            'temperatura_externa_c': temp_ext,
+            'umidade_externa_pct': umid_ext,
+            'co2_externo_ppm': co2_ext,
+            'leitura_temp_em': temp_em,
+            'leitura_umid_em': umid_em,
+            'leitura_co2_em': co2_em,
+            'sinonimos': ['temperatura externa', 'umidade externa', 'co2 externo', 'clima', 'tempo lá fora', 'condição ambiente', 'estação meteorológica'],
+        })
+
+    # Alerta de CO₂ elevado (indica atividade biológica/fermentação no grão).
+    # Ar ambiente tem ~400-450 ppm; acima de 1500 ppm merece atenção.
+    for s in sensores:
+        pico = s.telemetries.filter(
+            timestamp__gte=now - timedelta(hours=24), co2_ppm__gte=1500
+        ).order_by('-co2_ppm').values('co2_ppm').first()
+        if pico:
+            rotulo = s.sensor_id
+            if s.secador_id:
+                rotulo = f'secador {s.secador.nome} ({s.sensor_id})'
+            elif s.silo_id:
+                rotulo = f'silo {s.silo.name} ({s.sensor_id})'
+            alertas.append(f'CO₂ elevado ({round(pico["co2_ppm"])} ppm) no {rotulo} — possível atividade biológica')
+            if len([a for a in alertas if a.startswith('CO₂ elevado')]) >= 5:
+                break
 
     # ── CONTEXTO FINAL ───────────────────────────────────────
     context_data = {
@@ -265,6 +322,8 @@ def get_ai_context(user):
             for l in lotes
         ],
         'processos': processos_completos,
+        'condicoes_externas': condicoes_externas,
+        'sensores': sensores_dados,
         'clientes': [
             {'id': c.id, 'nome': c.nome, 'telefone': c.telefone}
             for c in clientes

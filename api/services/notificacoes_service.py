@@ -5,40 +5,40 @@ from ..models import SensorData, Telemetry, Processo, Secador, Silo, Notificacao
 
 
 def _gerar_notificacoes_fogo(usuario):
+    from .fire_risk_service import avaliar_risco_incendio, taxa_subida, TIPOS_FOGO, NIVEIS_ALERTA
     unidades = usuario.get_accessible_unidades()
     sensores_fogo = SensorData.objects.filter(
         Q(unidade_armazenadora__in=unidades) | Q(secador__unidade_armazenadora__in=unidades),
-        tipo__in=['sensor_mancal', 'sensor_abafando']
+        tipo__in=TIPOS_FOGO
     ).distinct()
 
     for sensor in sensores_fogo:
         if not sensor.secador_id:
             continue
-        ultimas = Telemetry.objects.filter(sensor=sensor).order_by('-timestamp')[:10]
+        ultimas = list(Telemetry.objects.filter(sensor=sensor).order_by('-timestamp')[:10])
         if not ultimas:
             continue
         latest = ultimas[0]
         temp = latest.temperatura or 0
         gas = (latest.dados_extras or {}).get('nivel_gas') if latest.dados_extras else None
-        taxa = _calc_taxa(ultimas)
+        # Limiares unificados (mesmos do signal + app). Ver fire_risk_service.
+        nivel = avaliar_risco_incendio(
+            tipo=sensor.tipo,
+            temperatura=latest.temperatura,
+            gas_ppm=gas,
+            co2_ppm=latest.co2_ppm,
+            taxa=taxa_subida(ultimas),
+        )['nivel']
 
-        nivel = 'safe'
-        if temp >= 120 or (gas and gas >= 100) or taxa >= 5:
-            nivel = 'emergency'
-        elif temp >= 90 or (gas and gas >= 50) or taxa >= 3:
-            nivel = 'critical'
-        elif temp >= 70 or (gas and gas >= 30) or taxa >= 2:
-            nivel = 'warning'
-        elif temp >= 50:
-            nivel = 'attention'
-
-        if nivel in ('emergency', 'critical', 'warning'):
+        if nivel in NIVEIS_ALERTA:
             secador_nome = sensor.secador.nome if sensor.secador else 'Desconhecido'
             tipo_label = 'Mancal' if sensor.tipo == 'sensor_mancal' else 'Abafamento'
             is_emergency = nivel == 'emergency'
             desc = f"{tipo_label} {sensor.sensor_id}: {temp:.1f}°C no {secador_nome}"
             if gas:
                 desc += f" | Gás: {gas:.0f} ppm"
+            if latest.co2_ppm:
+                desc += f" | CO₂: {latest.co2_ppm:.0f} ppm"
             dedup = f"fire_{secador_nome}_{nivel}_{timezone.now().hour}"
 
             Notificacao.objects.update_or_create(

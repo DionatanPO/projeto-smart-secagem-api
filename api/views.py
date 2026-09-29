@@ -4,16 +4,17 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
-from .models import SensorData, User, Silo, Telemetry, UnidadeArmazenadora, Lote, Secador, Processo, Cliente, MotorAeracao, Notificacao
-from .serializers import SensorDataSerializer, UserSerializer, MeSerializer, SiloSerializer, TelemetrySerializer, UnidadeArmazenadoraSerializer, LoteSerializer, SecadorSerializer, ProcessoSerializer, ClienteSerializer, MotorAeracaoSerializer, NotificacaoSerializer
+from .models import SensorData, User, Silo, Telemetry, UnidadeArmazenadora, Lote, Secador, Processo, Cliente, MotorAeracao, Notificacao, ReceitaSecagem, ParametroAutomacaoSecador
+from .serializers import SensorDataSerializer, UserSerializer, MeSerializer, SiloSerializer, TelemetrySerializer, UnidadeArmazenadoraSerializer, LoteSerializer, SecadorSerializer, ProcessoSerializer, ClienteSerializer, MotorAeracaoSerializer, NotificacaoSerializer, ReceitaSecagemSerializer, ParametroAutomacaoSecadorSerializer
 from .permissions import IsAdminOrReadOnly, IsAdminOrDeleteOnly, CanManageUsers
 from django.db.models import Avg, Max, Min, Q
 from django.utils import timezone
 from datetime import timedelta
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from .services.context_service import get_ai_context
 from .services.custos_service import calcular_custos_processo
 from .services.notificacoes_service import gerar_todas_notificacoes
+from .services.tts_service import synthesize_mp3
 
 
 @api_view(['GET'])
@@ -43,6 +44,18 @@ class SensorDataViewSet(viewsets.ModelViewSet):
         secador = self.request.query_params.get('secador')
         if secador:
             queryset = queryset.filter(secador_id=secador)
+        unidade = self.request.query_params.get('unidade') or self.request.query_params.get('unidade_armazenadora')
+        if unidade:
+            queryset = queryset.filter(
+                Q(unidade_armazenadora_id=unidade) | Q(silo__unidade_armazenadora_id=unidade) | Q(secador__unidade_armazenadora_id=unidade)
+            )
+        tipo = self.request.query_params.get('tipo')
+        if tipo:
+            queryset = queryset.filter(tipo=tipo)
+        # Atalho: só estações/ambiente da unidade (sem silo/secador)
+        somente_ambiente = self.request.query_params.get('somente_ambiente')
+        if somente_ambiente and somente_ambiente.lower() in ('1', 'true', 'sim'):
+            queryset = queryset.filter(silo__isnull=True, secador__isnull=True)
         return queryset
 
 class TelemetryViewSet(viewsets.ModelViewSet):
@@ -78,11 +91,38 @@ class TelemetryViewSet(viewsets.ModelViewSet):
         if date_str:
             queryset = queryset.filter(timestamp__date=date_str)
 
+        # Filtrar por secador (todos os sensores de um secador)
+        secador_id = self.request.query_params.get('secador')
+        if secador_id:
+            queryset = queryset.filter(sensor__secador_id=secador_id)
+
+        # Filtrar por unidade (inclui sensores diretos + via silo/secador)
+        unidade_id = self.request.query_params.get('unidade') or self.request.query_params.get('unidade_armazenadora')
+        if unidade_id:
+            queryset = queryset.filter(
+                Q(sensor__unidade_armazenadora_id=unidade_id) |
+                Q(sensor__silo__unidade_armazenadora_id=unidade_id) |
+                Q(sensor__secador__unidade_armazenadora_id=unidade_id)
+            )
+
+        # Filtrar por tipo do sensor (ex: ambiente, estacao_meteorologica, plenum)
+        tipo = self.request.query_params.get('tipo')
+        if tipo:
+            queryset = queryset.filter(sensor__tipo=tipo)
+
+        # Limite de resultados (útil p/ gateway e gráfico)
+        limit = self.request.query_params.get('limit')
+        if limit:
+            try:
+                queryset = queryset[:int(limit)]
+            except (ValueError, TypeError):
+                pass
+
         return queryset
 
     def create(self, request, *args, **kwargs):
         # Lógica especial para aceitar o physical_id do sensor vindo do Gateway
-        data = request.data
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
         physical_id = data.get('sensor_id')
 
         if physical_id:
@@ -94,6 +134,10 @@ class TelemetryViewSet(viewsets.ModelViewSet):
                     {"error": f"Sensor com ID físico {physical_id} não encontrado na configuração."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
+        # Alias do gateway: 'co2' -> 'co2_ppm'
+        if 'co2_ppm' not in data and 'co2' in data:
+            data['co2_ppm'] = data.get('co2')
 
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
@@ -135,6 +179,58 @@ class SecadorViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         unidades = self.request.user.get_accessible_unidades()
         return Secador.objects.filter(unidade_armazenadora__in=unidades)
+
+    @action(detail=True, methods=['get', 'put', 'patch'], url_path='parametros')
+    def parametros(self, request, pk=None):
+        """GET/PUT dos parâmetros de automação do secador (cria com defaults se não existir)."""
+        secador = self.get_object()
+        try:
+            params = secador.parametros_automacao
+        except ParametroAutomacaoSecador.DoesNotExist:
+            params = ParametroAutomacaoSecador(secador=secador)
+        if request.method == 'GET':
+            return Response(ParametroAutomacaoSecadorSerializer(params).data)
+        serializer = ParametroAutomacaoSecadorSerializer(params, data=request.data, partial=request.method == 'PATCH')
+        serializer.is_valid(raise_exception=True)
+        serializer.save(secador=secador, atualizado_por=request.user)
+        return Response(serializer.data)
+
+
+class ReceitaSecagemViewSet(viewsets.ModelViewSet):
+    serializer_class = ReceitaSecagemSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrDeleteOnly]
+
+    def get_queryset(self):
+        queryset = ReceitaSecagem.objects.all()
+        cultura = self.request.query_params.get('cultura')
+        if cultura:
+            queryset = queryset.filter(cultura__icontains=cultura)
+        ativo = self.request.query_params.get('ativo')
+        if ativo is not None:
+            if ativo.lower() in ('1', 'true', 'sim'):
+                queryset = queryset.filter(ativo=True)
+            elif ativo.lower() in ('0', 'false', 'nao', 'não'):
+                queryset = queryset.filter(ativo=False)
+        return queryset
+
+
+class ParametroAutomacaoSecadorViewSet(viewsets.ModelViewSet):
+    serializer_class = ParametroAutomacaoSecadorSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrDeleteOnly]
+
+    def get_queryset(self):
+        unidades = self.request.user.get_accessible_unidades()
+        queryset = ParametroAutomacaoSecador.objects.filter(secador__unidade_armazenadora__in=unidades)
+        secador_id = self.request.query_params.get('secador')
+        if secador_id:
+            queryset = queryset.filter(secador_id=secador_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(atualizado_por=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(atualizado_por=self.request.user)
 
 class ProcessoViewSet(viewsets.ModelViewSet):
     serializer_class = ProcessoSerializer
@@ -301,6 +397,30 @@ def logout_view(request):
     request.user.auth_token.delete()
     return Response({"message": "Logout realizado com sucesso"}, status=status.HTTP_200_OK)
 
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def tts_view(request):
+    """Sintetiza texto em MP3 via Microsoft Edge TTS (modo Live do app).
+
+    Body: {"text": "...", "voice": "pt-BR-FranciscaNeural"} (voz opcional)
+    Resposta 200: bytes do MP3 (audio/mpeg).
+    """
+    text = (request.data.get('text') or '').strip()
+    voice = request.data.get('voice')
+    if not text:
+        return Response({'detail': 'Campo "text" é obrigatório.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+    try:
+        audio = synthesize_mp3(text, voice)
+    except ValueError as e:
+        return Response({'detail': str(e)},
+                        status=status.HTTP_400_BAD_REQUEST)
+    except Exception:
+        return Response({'detail': 'Falha ao sintetizar áudio.'},
+                        status=status.HTTP_502_BAD_GATEWAY)
+    return HttpResponse(audio, content_type='audio/mpeg')
 
 
 @api_view(['GET'])
