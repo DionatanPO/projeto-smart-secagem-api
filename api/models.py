@@ -115,6 +115,10 @@ class Telemetry(models.Model):
         ordering = ['-timestamp']
         verbose_name = 'Telemetria'
         verbose_name_plural = 'Telemetrias'
+        indexes = [
+            # Acelera as séries temporais por sensor (gráficos/dashboards)
+            models.Index(fields=['sensor', 'timestamp'], name='telemetry_sensor_ts_idx'),
+        ]
 
     def __str__(self):
         co2 = f" | {self.co2_ppm}ppm" if self.co2_ppm is not None else ""
